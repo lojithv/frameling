@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/render", "crates/export", "crates/cli", "crates/wasm", "crates/tts"]
+# The Tauri shell (app/src-tauri) is its own workspace so the engine builds
+# without desktop system libraries (webkit2gtk etc.).
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/frameling"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+ttf-parser = "0.25"
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }
+frameling-core = { path = "crates/core" }
+frameling-render = { path = "crates/render" }
+frameling-export = { path = "crates/export" }
+frameling-tts = { path = "crates/tts" }
+base64 = "0.22"
+wasm-bindgen = "=0.2.130"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+[profile.dev.package."*"]
+opt-level = 2

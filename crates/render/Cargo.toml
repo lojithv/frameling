@@ -1,0 +1,10 @@
+[package]
+name = "frameling-render"
+description = "CPU rasteriser for Frameling display lists (tiny-skia). Used by the web preview (via WASM) and by native export."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+frameling-core.workspace = true
+tiny-skia.workspace = true

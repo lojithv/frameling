@@ -1,0 +1,59 @@
+/* Theme: tweak these variables (or load your own CSS) to restyle the whole editor. */
+:root {
+  --bg-0: #0f111a;
+  --bg-1: #151826;
+  --bg-2: #1c2032;
+  --bg-3: #262b41;
+  --line: #2a2f45;
+  --text: #e8eaf4;
+  --muted: #8d93ad;
+  --accent: #5b6cff;
+  --accent-2: #8f9bff;
+  color-scheme: dark;
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+.panel { background: var(--bg-1); }
+button, input, select, textarea {
+  font: inherit;
+  color: var(--text);
+}
+button {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+button:hover:not(:disabled) { border-color: #3d4466; background: var(--bg-3); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary, label.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: white;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+button.primary:hover { background: #6d7cff; }
+button.ghost { background: transparent; border-style: dashed; }
+input, select, textarea {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 9px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input[type="range"] { padding: 0; accent-color: var(--accent); background: none; border: none; }
+input[type="checkbox"] { accent-color: var(--accent); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2b3047; border-radius: 6px; border: 2px solid var(--bg-1); }
+::-webkit-scrollbar-track { background: transparent; }

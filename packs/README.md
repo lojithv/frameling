@@ -1,0 +1,54 @@
+# Asset packs
+
+A pack is one JSON file. Load it from **Props → Load asset pack…**, or with `--pack` on the CLI.
+Entries with the same `id` as built-in ones replace them.
+
+```json
+{
+  "id": "my-pack",
+  "name": "My pack",
+  "version": "1.0.0",
+  "license": "CC0-1.0",
+  "props": [ { "id": "...", "name": "...", "category": "...", "colors": ["#hex"], "shapes": [ ... ] } ],
+  "backgrounds": [ { "id": "...", "name": "...", "colors": ["#hex"], "shapes": [ ... ] } ],
+  "actions": [ { "id": "...", "name": "...", "duration": 1.0, "loop": true, "keys": [ { "t": 0, "pose": { ... } } ] } ]
+}
+```
+
+## Coordinates
+
+- **Props**: the origin is the base centre, and y grows downward, so a prop is drawn at negative y.
+  Characters are about 330 units tall at scale 1.
+- **Backgrounds**: a 1280×720 canvas, origin top-left.
+
+## Shapes
+
+| `t` | fields |
+|---|---|
+| `rect` | `x y w h r` (r = corner radius) |
+| `circle` | `cx cy r` |
+| `ellipse` | `cx cy rx ry` |
+| `poly` | `points: [[x,y], ...]` |
+| `line` | `x1 y1 x2 y2` |
+| `path` | `d` (SVG path data: M L H V C S Q T Z, absolute or relative) |
+
+Common fields: `fill`, `stroke`, `sw` (stroke width), `opacity`.
+
+`fill` is a colour (`"#rrggbb"`, `"#rrggbbaa"`) or a gradient `{"lin": [x0,y0,x1,y1], "stops": ["#a", "#b"]}`.
+
+Colours may reference the entry's colour slots, which users can change in the inspector:
+`"$0"`, `"$1"`, ... and shades `"$0d"` (darker), `"$0dd"`, `"$0l"` (lighter), `"$0ll"`.
+
+## Actions
+
+`keys[].t` is the position in the cycle (0..1). Pose fields (degrees or pixels, all optional):
+
+| field | meaning |
+|---|---|
+| `rise` | lift the whole body (jumps) |
+| `bob` | push the upper body down |
+| `lean` | rotate the upper body |
+| `head` | tilt the head |
+| `ls le` / `rs re` | left/right shoulder and elbow (0 = hanging; + raises outward, − crosses the body) |
+| `lh lk` / `rh rk` | left/right hip and knee |
+| `look` | eye direction, −1..1 |

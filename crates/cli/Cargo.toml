@@ -1,0 +1,22 @@
+[package]
+name = "frameling-cli"
+description = "Headless Frameling: render projects to video or PNG, create demo projects, apply command scripts."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "frameling"
+path = "src/main.rs"
+
+[dependencies]
+frameling-core.workspace = true
+frameling-render.workspace = true
+frameling-export.workspace = true
+frameling-tts.workspace = true
+serde.workspace = true
+base64.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

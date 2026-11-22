@@ -1,0 +1,193 @@
+// App state. The Rust engine owns the document; this store holds a read-only
+// copy of it for the UI plus view state (selection, playhead, panels).
+
+import init, { Engine } from "../engine/frameling.js";
+import type { Catalog, Command, Item, ItemHit, Project, Scene } from "./types";
+
+let engine: Engine | null = null;
+
+export const app = $state({
+  ready: false,
+  project: null as Project | null,
+  catalog: null as Catalog | null,
+  sceneIndex: 0,
+  /** Local frame within the current scene (editing playhead). */
+  frame: 0,
+  selected: null as string | null,
+  playing: false,
+  /** "scene" plays the current scene, "all" plays the whole movie with transitions. */
+  playMode: "scene" as "scene" | "all",
+  globalFrame: 0,
+  canUndo: false,
+  canRedo: false,
+  dirty: false,
+  /** Bumped whenever the picture may have changed. */
+  rev: 0,
+  hits: [] as ItemHit[],
+  toast: null as null | { text: string; kind: "info" | "error" },
+  filePath: null as string | null,
+  /** Last known modification time of filePath (desktop), to notice agent edits. */
+  fileMtime: 0,
+  exporting: null as null | { done: number; total: number; label: string },
+});
+
+export async function boot() {
+  await init();
+  engine = new Engine();
+  const saved = await loadAutosave();
+  let restored = false;
+  if (saved) {
+    try {
+      engine.load(saved);
+      restored = true;
+    } catch {
+      /* ignore broken autosave */
+    }
+  }
+  if (!restored) engine.load_demo();
+  app.catalog = JSON.parse(engine.catalog());
+  refresh();
+  app.ready = true;
+  if (restored) toast("Restored your last session");
+}
+
+export function eng(): Engine {
+  if (!engine) throw new Error("engine not ready");
+  return engine;
+}
+
+/** Re-read the project from the engine after any change. */
+export function refresh() {
+  const e = eng();
+  app.project = JSON.parse(e.project_view_json());
+  app.canUndo = e.can_undo();
+  app.canRedo = e.can_redo();
+  app.dirty = e.is_dirty();
+  const n = app.project!.scenes.length;
+  if (app.sceneIndex >= n) app.sceneIndex = n - 1;
+  const s = currentScene();
+  if (s && app.frame >= s.duration) app.frame = Math.max(0, s.duration - 1);
+  if (app.selected && !s?.items.some((i) => i.id === app.selected)) app.selected = null;
+  app.rev++;
+  scheduleAutosave();
+}
+
+/** Apply a command. `merge` collapses a continuous gesture into one undo step. */
+export function run(cmd: Command, merge?: string): boolean {
+  try {
+    eng().apply(JSON.stringify(cmd), merge ?? undefined);
+    refresh();
+    return true;
+  } catch (e) {
+    toast(String((e as Error).message ?? e), "error");
+    return false;
+  }
+}
+
+export function endGesture() {
+  eng().seal();
+}
+
+export function undo() {
+  if (eng().undo()) refresh();
+}
+export function redo() {
+  if (eng().redo()) refresh();
+}
+
+export function currentScene(): Scene | null {
+  return app.project?.scenes[app.sceneIndex] ?? null;
+}
+
+export function selectedItem(): Item | null {
+  const s = currentScene();
+  return s?.items.find((i) => i.id === app.selected) ?? null;
+}
+
+export function updateItem(item: Item, merge?: string) {
+  const s = currentScene();
+  if (s) run({ op: "updateItem", scene: s.id, item }, merge);
+}
+
+export function updateScene(scene: Scene, merge?: string) {
+  run({ op: "updateScene", scene }, merge);
+}
+
+export function loadProject(json: string, path: string | null = null, keepView = false) {
+  try {
+    eng().load(json);
+    if (!keepView) {
+      app.sceneIndex = 0;
+      app.frame = 0;
+      app.selected = null;
+    }
+    app.filePath = path;
+    eng().mark_saved();
+    refresh();
+  } catch (e) {
+    toast(`Could not open project: ${(e as Error).message ?? e}`, "error");
+  }
+}
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+export function toast(text: string, kind: "info" | "error" = "info") {
+  app.toast = { text, kind };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (app.toast = null), kind === "error" ? 6000 : 2800);
+}
+
+// ---------------------------------------------------------------- autosave
+// IndexedDB keeps the last session (including embedded audio) on both desktop and web.
+
+const DB = "frameling";
+function idb(): Promise<IDBDatabase> {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kvSet(key: string, val: string) {
+  const db = await idb();
+  await new Promise<void>((res, rej) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(val, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function kvGet(key: string): Promise<string | null> {
+  const db = await idb();
+  return new Promise((res) => {
+    const r = db.transaction("kv").objectStore("kv").get(key);
+    r.onsuccess = () => res((r.result as string) ?? null);
+    r.onerror = () => res(null);
+  });
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleAutosave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (engine) kvSet("autosave", engine.project_json()).catch(() => {});
+  }, 800);
+}
+async function loadAutosave() {
+  try {
+    return await kvGet("autosave");
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------- helpers
+
+export const secs = (frames: number) => frames / (app.project?.fps ?? 30);
+export const frames = (s: number) => Math.round(s * (app.project?.fps ?? 30));
+export const fmtTime = (f: number) => {
+  const fps = app.project?.fps ?? 30;
+  const s = f / fps;
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, "0")}`;
+};

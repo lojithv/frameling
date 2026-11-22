@@ -1,0 +1,12 @@
+/target
+app/node_modules
+app/dist
+app/src/engine/
+app/src-tauri/target
+app/src-tauri/gen
+*.mp4
+*.webm
+.DS_Store
+app/src-tauri/resources/tts/*
+!app/src-tauri/resources/tts/README.md
+app/.tts-cache

@@ -1,0 +1,15 @@
+[package]
+name = "frameling-wasm"
+description = "WebAssembly bindings: the Frameling engine for the editor UI (desktop webview and browser)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frameling-core.workspace = true
+frameling-render.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "frameling-core"
+description = "Document model, commands, undo and the deterministic timeline evaluator for Frameling."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+ttf-parser.workspace = true

@@ -1,0 +1,46 @@
+{
+  "id": "space",
+  "name": "Space pack (example)",
+  "version": "1.0.0",
+  "license": "CC0-1.0",
+  "props": [
+    {
+      "id": "rocket", "name": "Rocket", "category": "Space", "colors": ["#e8eaf4", "#e84a5f", "#5bc0eb"],
+      "shapes": [
+        { "t": "poly", "points": [[-40, -40], [-70, 0], [-30, -10]], "fill": "$1" },
+        { "t": "poly", "points": [[40, -40], [70, 0], [30, -10]], "fill": "$1" },
+        { "t": "path", "d": "M-36 -10 L -36 -170 C -36 -230 0 -270 0 -270 C 0 -270 36 -230 36 -170 L 36 -10 Z", "fill": "$0" },
+        { "t": "circle", "cx": 0, "cy": -160, "r": 20, "fill": "$2", "stroke": "$0d", "sw": 6 },
+        { "t": "path", "d": "M-20 -10 L 0 40 L 20 -10 Z", "fill": "#ffb703" }
+      ]
+    },
+    {
+      "id": "planet", "name": "Ringed planet", "category": "Space", "colors": ["#9b5de5", "#f2d06b"],
+      "shapes": [
+        { "t": "circle", "cx": 0, "cy": -90, "r": 80, "fill": { "lin": [0, -170, 0, -10], "stops": ["$0l", "$0d"] } },
+        { "t": "ellipse", "cx": 0, "cy": -90, "rx": 130, "ry": 22, "stroke": "$1", "sw": 8, "opacity": 0.9 }
+      ]
+    }
+  ],
+  "backgrounds": [
+    {
+      "id": "moon-base", "name": "Moon base", "colors": ["#0b1026", "#2b2f55", "#9aa3b5"],
+      "shapes": [
+        { "t": "rect", "x": 0, "y": 0, "w": 1280, "h": 720, "fill": { "lin": [0, 0, 0, 520], "stops": ["$0", "$1"] } },
+        { "t": "circle", "cx": 220, "cy": 140, "r": 70, "fill": "#5bc0eb", "opacity": 0.9 },
+        { "t": "path", "d": "M0 520 C 300 480 500 540 800 500 C 1000 470 1150 500 1280 520 L 1280 720 L 0 720 Z", "fill": "$2" },
+        { "t": "ellipse", "cx": 380, "cy": 620, "rx": 70, "ry": 14, "fill": "$2d" },
+        { "t": "ellipse", "cx": 980, "cy": 580, "rx": 90, "ry": 16, "fill": "$2d" }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "float", "name": "Float (zero-g)", "duration": 3.0, "loop": true,
+      "keys": [
+        { "t": 0, "pose": { "rise": 20, "ls": 60, "le": 30, "rs": 60, "re": 30, "lh": 10, "rh": 10, "lean": -4 } },
+        { "t": 0.5, "pose": { "rise": 40, "ls": 70, "le": 50, "rs": 70, "re": 50, "lh": 16, "rh": 4, "lean": 4, "head": 4 } }
+      ]
+    }
+  ]
+}
