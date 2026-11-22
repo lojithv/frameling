@@ -39,7 +39,7 @@ fn tools() -> Value {
             "speed": { "type": "number", "description": "0.5-2, default 1" },
             "start_seconds": { "type": "number", "description": "optional fixed start time in the scene" }
         }), &["scene", "character", "text"])),
-        tool("script_to_video", "Replace the project with one built from a screenplay: '[office]' starts a scene, 'Name (happy, wave): line' is dialogue, '> text' is a caption. Characters are cast and voiced automatically.", obj(json!({ "script": { "type": "string" }, "bubbles": { "type": "boolean", "description": "also show lines in speech bubbles" } }), &["script"])),
+        tool("script_to_video", "Replace the project with one built from a screenplay: '[office]' starts a scene, 'Name (happy, wave): line' is dialogue, '> text' is a caption. Characters are cast and voiced automatically. A line 'Style: stick' casts stick figures instead of cartoon characters.", obj(json!({ "script": { "type": "string" }, "bubbles": { "type": "boolean", "description": "also show lines in speech bubbles" } }), &["script"])),
         tool("render_frame", "Render a frame as a PNG so you can see the result. Give scene + seconds (within that scene), or a global frame number.", obj(json!({
             "scene": { "type": "string" }, "seconds": { "type": "number" }, "frame": { "type": "integer" }, "width": { "type": "integer", "description": "default 640" }
         }), &[])),
@@ -125,7 +125,8 @@ impl Server {
             }
             "get_library" => {
                 let mut c = self.lib.catalog();
-                c["expressions"] = json!(["neutral", "happy", "sad", "angry", "surprised", "thinking", "wink"]);
+                c["expressions"] = json!(["neutral", "happy", "sad", "angry", "surprised", "thinking", "wink", "worried", "confused"]);
+                c["styles"] = json!({ "style": ["cartoon", "stick"], "dress": "true/false (stick figures)", "stickTip": "a stick figure is look.style='stick': lines use look.top, head fill look.skin, dress/bow/cap/tie use look.accent" });
                 c["look"] = json!({ "hairStyle": ["short", "spiky", "long", "bun", "curly", "bald"], "build": ["slim", "regular", "broad"], "accessory": ["none", "glasses", "tie", "cap", "bow"] });
                 c["textStyles"] = json!(["bubble", "thought", "caption", "title", "plain"]);
                 Ok(text(serde_json::to_string_pretty(&c).unwrap()))

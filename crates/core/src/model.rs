@@ -335,6 +335,20 @@ pub struct Look {
     pub build: Build,
     pub accessory: Accessory,
     pub accent: Color,
+    /// Drawing style: the full cartoon rig or a line-drawn stick figure.
+    pub style: FigureStyle,
+    /// Wear a dress (stick figures): `accent` is its colour.
+    pub dress: bool,
+}
+
+/// How a character is drawn. Both styles share poses, actions, expressions
+/// and lip sync, so a stick figure can do everything a cartoon character can.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum FigureStyle {
+    #[default]
+    Cartoon,
+    Stick,
 }
 
 impl Default for Look {
@@ -349,6 +363,27 @@ impl Default for Look {
             build: Build::Regular,
             accessory: Accessory::None,
             accent: Color::rgb(0xe8, 0x4a, 0x5f),
+            style: FigureStyle::Cartoon,
+            dress: false,
+        }
+    }
+}
+
+impl Look {
+    /// A stick figure: black lines, white head. `female` adds long hair and a dress.
+    pub fn stick(female: bool) -> Look {
+        Look {
+            skin: Color::WHITE,
+            hair: Color::rgb(0x1f, 0x22, 0x33),
+            hair_style: if female { HairStyle::Long } else { HairStyle::Bald },
+            top: Color::rgb(0x1f, 0x22, 0x33),
+            bottom: Color::rgb(0x1f, 0x22, 0x33),
+            shoes: Color::rgb(0x1f, 0x22, 0x33),
+            build: Build::Regular,
+            accessory: Accessory::None,
+            accent: Color::rgb(0xe8, 0x4a, 0x5f),
+            style: FigureStyle::Stick,
+            dress: female,
         }
     }
 }
@@ -396,6 +431,8 @@ pub enum Expression {
     Surprised,
     Thinking,
     Wink,
+    Worried,
+    Confused,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

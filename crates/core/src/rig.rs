@@ -6,7 +6,7 @@
 
 use crate::display::{Op, Path};
 use crate::geom::{Affine, Color};
-use crate::model::{Accessory, Build, Expression, HairStyle, Look};
+use crate::model::{Accessory, Build, Expression, FigureStyle, HairStyle, Look};
 use crate::pack::ActionDef;
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +37,8 @@ pub struct Pose {
     pub rk: f32,
     /// Horizontal eye direction, -1..1.
     pub look: f32,
+    /// Right hand makes a thumbs-up, 0..1 (drawn above 0.5).
+    pub thumb: f32,
 }
 
 macro_rules! pose_lerp {
@@ -47,7 +49,7 @@ macro_rules! pose_lerp {
 
 impl Pose {
     pub fn lerp(&self, o: &Pose, t: f32) -> Pose {
-        pose_lerp!(self, o, t; rise, bob, lean, head, ls, le, rs, re, lh, lk, rh, rk, look)
+        pose_lerp!(self, o, t; rise, bob, lean, head, ls, le, rs, re, lh, lk, rh, rk, look, thumb)
     }
 }
 
@@ -135,6 +137,9 @@ fn limb(
 
 /// Draw a character. Coordinates: feet at (0,0), about 330px tall.
 pub fn draw_character(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
+    if look.style == FigureStyle::Stick {
+        return crate::stick::draw_stick(look, pose, face);
+    }
     let mut out = Vec::new();
     let width: f32 = match look.build {
         Build::Slim => 74.0,
@@ -198,6 +203,9 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
     for (side, s, e) in [(-1.0f32, pose.ls, pose.le), (1.0, pose.rs, pose.re)] {
         let hand = limb(&mut upper, (side * sh_x, sh_y), s, e, 42.0, 40.0, side, look.top, look.skin, 21.0);
         upper.push(Op::fill(Path::circle(hand.0, hand.1, 11.0), look.skin));
+        if side > 0.0 && pose.thumb > 0.5 {
+            upper.push(Op::fill(Path::round_rect(hand.0 - 4.0, hand.1 - 25.0, 8.5, 20.0, 4.2), look.skin));
+        }
     }
 
     // Neck
@@ -278,7 +286,8 @@ fn draw_eyes(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face) {
     let ey = -2.0;
     let (mut px, mut py) = (pose.look * 3.0, 0.0);
     match face.expression {
-        Sad => py = 2.5,
+        Sad | Worried => py = 2.5,
+        Confused => px = -2.5,
         Thinking => {
             px = 3.5;
             py = -3.5
@@ -311,6 +320,9 @@ fn draw_eyes(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face) {
             Angry => (-12.0, -20.0),
             Surprised => (-25.0, -24.0),
             Thinking if side > 0.0 => (-24.0, -23.0),
+            Worried => (-25.0, -17.0),
+            Confused if side > 0.0 => (-27.0, -25.0),
+            Confused => (-17.0, -17.0),
             _ => (-18.0, -19.0),
         };
         out.push(Op::stroke(
@@ -351,6 +363,7 @@ fn draw_mouth(out: &mut Vec<Op>, face: &Face) {
         }
         Surprised => out.push(Op::fill(Path::ellipse(mx, my + 2.0, 7.0, 9.0), MOUTH)),
         Thinking => out.push(Op::stroke(Path::polyline(&[(mx - 6.0, my + 1.0), (mx + 9.0, my - 2.0)], false), MOUTH, 3.5)),
+        Worried | Confused => out.push(Op::stroke(wavy_mouth(mx, my + 2.0, 12.0), MOUTH, 3.5)),
         Neutral => {
             let mut p = Path::new();
             p.move_to(mx - 10.0, my - 1.0).quad_to(mx, my + 6.0, mx + 10.0, my - 1.0);
@@ -397,4 +410,12 @@ fn draw_hair(out: &mut Vec<Op>, look: &Look) {
             }
         }
     }
+}
+
+/// A wobbly line mouth (worried / confused).
+pub(crate) fn wavy_mouth(cx: f32, cy: f32, half: f32) -> Path {
+    let mut p = Path::new();
+    let q = half / 2.0;
+    p.move_to(cx - half, cy).quad_to(cx - q * 1.5, cy - 4.0, cx - q, cy).quad_to(cx - q * 0.5, cy + 4.0, cx, cy).quad_to(cx + q * 0.5, cy - 4.0, cx + q, cy).quad_to(cx + q * 1.5, cy + 4.0, cx + half, cy);
+    p
 }

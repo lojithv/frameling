@@ -46,6 +46,24 @@ fn presets() -> Vec<(&'static str, Look)> {
     ]
 }
 
+/// Stick-figure cast for "Style: stick" screenplays: alternating men and women,
+/// told apart by hair, accessories and dress colour.
+fn stick_presets() -> Vec<(&'static str, Look)> {
+    let c = |s: &str| Color::parse(s).unwrap();
+    let m = Look::stick(false);
+    let f = Look::stick(true);
+    vec![
+        // Women first so they line up with the voice order (F1, M1, F2, M2…).
+        ("Bea", Look { accent: c("#ef6f6c"), ..f.clone() }),
+        ("Alex", Look { hair_style: HairStyle::Short, ..m.clone() }),
+        ("Dee", Look { hair_style: HairStyle::Bun, accent: c("#4ea8de"), accessory: Accessory::Bow, ..f.clone() }),
+        ("Cal", Look { hair_style: HairStyle::Spiky, accessory: Accessory::Glasses, ..m.clone() }),
+        ("Eli", Look { accessory: Accessory::Cap, accent: c("#3fae6a"), ..m.clone() }),
+        ("Fay", Look { hair_style: HairStyle::Curly, accent: c("#9b5de5"), ..f }),
+        ("Gus", Look { hair_style: HairStyle::Bald, accessory: Accessory::Tie, accent: c("#ef6f6c"), build: Build::Broad, ..m }),
+    ]
+}
+
 fn parse(src: &str) -> (String, Vec<SceneSpec>) {
     let mut title = "Untitled".to_string();
     let mut scenes: Vec<SceneSpec> = Vec::new();
@@ -56,6 +74,8 @@ fn parse(src: &str) -> (String, Vec<SceneSpec>) {
         }
         if let Some(t) = line.strip_prefix("Title:").or_else(|| line.strip_prefix("title:")) {
             title = t.trim().to_string();
+        } else if line.to_lowercase().starts_with("style:") {
+            // handled by build(): "Style: stick" casts stick figures
         } else if line.starts_with('[') && line.ends_with(']') {
             let inner = line[1..line.len() - 1].trim().trim_start_matches("scene:").trim();
             let mut parts = inner.split(',').map(str::trim);
@@ -92,6 +112,8 @@ fn expression(tag: &str) -> Option<Expression> {
         "surprised" | "shocked" | "amazed" => Expression::Surprised,
         "thinking" | "curious" | "unsure" => Expression::Thinking,
         "wink" | "winking" | "sly" => Expression::Wink,
+        "worried" | "nervous" | "scared" | "anxious" => Expression::Worried,
+        "confused" | "puzzled" | "lost" => Expression::Confused,
         _ => return None,
     })
 }
@@ -128,7 +150,11 @@ pub fn build(src: &str, lib: &Library, tts: &Tts, opts: &Options) -> Result<(Pro
     if voices.is_empty() {
         log.push("no text-to-speech voices found: lines are shown as speech bubbles only".into());
     }
-    let presets = presets();
+    let stick = src.lines().any(|l| {
+        let l = l.trim().to_lowercase();
+        l.starts_with("style:") && l.contains("stick")
+    });
+    let presets = if stick { stick_presets() } else { presets() };
     let mut cast: BTreeMap<String, (Look, Option<String>)> = BTreeMap::new();
     let mut ed = Editor::new(Project { name: title, scenes: vec![], ..Default::default() });
     let fps = ed.project.fps;

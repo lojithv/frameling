@@ -151,7 +151,20 @@
       <VoicePanel {item} />
       <section>
         <h3>Appearance</h3>
-        <div class="field"><span>Skin</span>{@render swatches(ch.look.skin, SKIN_TONES, (c) => editKind<CharacterKind>((k) => (k.look.skin = c)))}</div>
+        <div class="field"><span>Style</span>
+          {@render seg(ch.look.style ?? "cartoon", [{ id: "cartoon", label: "Cartoon" }, { id: "stick", label: "Stick figure" }], (v) => editKind<CharacterKind>((k) => {
+            k.look.style = v;
+            // Switching to stick: ink lines and a white head unless already customised.
+            if (v === "stick") Object.assign(k.look, { skin: "#ffffff", top: "#1f2233", bottom: "#1f2233", shoes: "#1f2233" });
+          }))}
+        </div>
+        {#if ch.look.style === "stick"}
+          <label class="check"><input type="checkbox" checked={!!ch.look.dress} onchange={() => editKind<CharacterKind>((k) => (k.look.dress = !k.look.dress))} /> Dress</label>
+          {#if ch.look.dress}
+            <div class="field"><span>Dress colour</span>{@render swatches(ch.look.accent, PALETTE.slice(2, 12), (c) => editKind<CharacterKind>((k) => (k.look.accent = c)))}</div>
+          {/if}
+        {/if}
+        <div class="field"><span>{ch.look.style === "stick" ? "Head" : "Skin"}</span>{@render swatches(ch.look.skin, SKIN_TONES, (c) => editKind<CharacterKind>((k) => (k.look.skin = c)))}</div>
         <div class="field"><span>Hair</span>
           {@render seg(ch.look.hairStyle, [
             { id: "short", label: "Short" }, { id: "long", label: "Long" }, { id: "spiky", label: "Spiky" },
@@ -159,8 +172,8 @@
           ], (v) => editKind<CharacterKind>((k) => (k.look.hairStyle = v)))}
         </div>
         <div class="field"><span>Hair colour</span>{@render swatches(ch.look.hair, ["#1b1311", "#3b2a20", "#5a3825", "#8a5a3c", "#d99a3e", "#f2d06b", "#b23a48", "#9aa3b5"], (c) => editKind<CharacterKind>((k) => (k.look.hair = c)))}</div>
-        <div class="field"><span>Top</span>{@render swatches(ch.look.top, PALETTE.slice(2, 12), (c) => editKind<CharacterKind>((k) => (k.look.top = c)))}</div>
-        <div class="field"><span>Bottom</span>{@render swatches(ch.look.bottom, ["#2f3a56", "#454d72", "#1f2233", "#264653", "#6b4630", "#9aa3b5", "#3a405a"], (c) => editKind<CharacterKind>((k) => (k.look.bottom = c)))}</div>
+        <div class="field"><span>{ch.look.style === "stick" ? "Lines" : "Top"}</span>{@render swatches(ch.look.top, ch.look.style === "stick" ? PALETTE.slice(0, 1).concat(PALETTE.slice(2, 11)) : PALETTE.slice(2, 12), (c) => editKind<CharacterKind>((k) => (k.look.top = c)))}</div>
+        {#if ch.look.style !== "stick"}<div class="field"><span>Bottom</span>{@render swatches(ch.look.bottom, ["#2f3a56", "#454d72", "#1f2233", "#264653", "#6b4630", "#9aa3b5", "#3a405a"], (c) => editKind<CharacterKind>((k) => (k.look.bottom = c)))}</div>{/if}
         <div class="field"><span>Shoes</span>{@render swatches(ch.look.shoes, ["#2a221e", "#1f2233", "#ffffff", "#e84a5f", "#8a5a3c"], (c) => editKind<CharacterKind>((k) => (k.look.shoes = c)))}</div>
         <div class="field"><span>Build</span>
           {@render seg(ch.look.build, [{ id: "slim", label: "Slim" }, { id: "regular", label: "Regular" }, { id: "broad", label: "Broad" }], (v) => editKind<CharacterKind>((k) => (k.look.build = v)))}

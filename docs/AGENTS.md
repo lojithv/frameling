@@ -42,6 +42,7 @@ adjust → `export_video`.
 
 ```text
 Title: Coffee break
+Style: stick                    optional: cast stick figures (women in dresses, men) instead of cartoon characters
 [office]                        new scene (background id; optional length: [office, 6s])
 Maya (happy, wave): Hi Leo!     line; words in brackets = expression and/or action
 Leo (surprised): Oh, hi Maya!
@@ -50,8 +51,10 @@ Leo (surprised): Oh, hi Maya!
 Leo (walk): Nice day for a walk.
 ```
 
-Expressions: neutral, happy, sad, angry, surprised, thinking, wink.
-Actions: any action id from `get_library` (idle, talk, wave, walk, run, jump, cheer, think, point, shrug, clap, dance, sad).
+Expressions: neutral, happy, sad, angry, surprised, thinking, wink, worried, confused.
+Actions: any action id from `get_library` (idle, talk, wave, walk, run, jump, cheer, think, point, shrug, clap, dance, sad,
+worry, hips, meditate, slump, kick, confused, thumbs-up).
+Stick backgrounds: stick-paper, stick-whiteboard, stick-hills, stick-room, stick-stage. Stick props are the `stick-*` ids.
 
 ## Commands (`apply_commands`)
 
@@ -83,7 +86,8 @@ enter/exit (none|fade|pop|slideLeft|slideRight|slideUp), motion {x, y, start, en
  "voice":"supertonic:F1","voiceSpeed":1,
  "look":{"skin":"#c68b62","hair":"#231a16","hairStyle":"short|spiky|long|bun|curly|bald",
          "top":"#f26b5b","bottom":"#2f3a56","shoes":"#2a221e","build":"slim|regular|broad",
-         "accessory":"none|glasses|tie|cap|bow","accent":"#e84a5f"}}
+         "accessory":"none|glasses|tie|cap|bow","accent":"#e84a5f",
+         "style":"cartoon|stick","dress":false}}
 {"type":"prop","prop":"desk","colors":["#b9875a"]}
 {"type":"text","text":"Hello!","style":"bubble|thought|caption|title|plain","size":28,
  "color":"#1f2233","fill":"#ffffff","tail":"bottomLeft|bottomRight|none","width":320,"typewriter":0}

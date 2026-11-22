@@ -13,6 +13,7 @@ pub mod geom;
 pub mod model;
 pub mod pack;
 pub mod rig;
+pub mod stick;
 pub mod text;
 
 pub use command::{Command, Editor};

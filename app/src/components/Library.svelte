@@ -85,8 +85,11 @@
   <div class="body">
     {#if tab === "characters"}
       <p class="hint">Click to add, or drag onto the stage. Restyle anyone in the inspector.</p>
+      {#each [["Cartoon", false], ["Stick figures", true]] as [label, stick]}
+      <h4>{label}</h4>
       <div class="grid">
         {#each CHARACTER_PRESETS as c, i}
+          {#if (c.group === "stick") === stick}
           <button
             class="card"
             draggable="true"
@@ -96,8 +99,10 @@
             <img alt="" src={itemThumb(`char-${i}`, newCharacter(c.look, c.name), 120, 140)} />
             <span>{c.name}</span>
           </button>
+          {/if}
         {/each}
       </div>
+      {/each}
     {:else if tab === "props"}
       <input class="search" placeholder="Search props…" bind:value={query} />
       {#each propsByCat as [cat, list]}

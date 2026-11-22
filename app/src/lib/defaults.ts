@@ -17,14 +17,29 @@ const baseLook: Look = {
   accent: "#e84a5f",
 };
 
+const INK = "#1f2233";
+const stickLook = (female: boolean, extra: Partial<Look> = {}): Look => ({
+  ...baseLook, skin: "#ffffff", hair: INK, hairStyle: female ? "long" : "short", top: INK, bottom: INK, shoes: INK,
+  style: "stick", dress: female, ...extra,
+});
+
 /** Ready-made characters. Everyone can restyle them in the inspector. */
-export const CHARACTER_PRESETS: { name: string; look: Look }[] = [
+export const CHARACTER_PRESETS: { name: string; look: Look; group?: "stick" }[] = [
   { name: "Maya", look: { ...baseLook, skin: "#c68b62", hair: "#231a16", hairStyle: "long", top: "#f26b5b", accessory: "glasses" } },
   { name: "Leo", look: { ...baseLook, skin: "#f3c9a5", hair: "#d99a3e", hairStyle: "spiky", top: "#3fae6a", bottom: "#454d72", build: "broad", accessory: "tie", accent: "#4f7cff" } },
   { name: "Ava", look: { ...baseLook, skin: "#8d5a3b", hair: "#1b1311", hairStyle: "curly", top: "#9b5de5", bottom: "#2b2d42", accessory: "bow", accent: "#ffb703", build: "slim" } },
   { name: "Sam", look: { ...baseLook, skin: "#e9b48a", hair: "#5a3825", hairStyle: "short", top: "#ffb703", bottom: "#3a405a", accessory: "cap", accent: "#e63946" } },
   { name: "Kai", look: { ...baseLook, skin: "#d7a37a", hair: "#121212", hairStyle: "bun", top: "#219ebc", bottom: "#23395b", build: "slim" } },
   { name: "Ray", look: { ...baseLook, skin: "#b07850", hair: "#2d2d2d", hairStyle: "bald", top: "#e76f51", bottom: "#264653", build: "broad", accessory: "glasses" } },
+  // Stick figures: same actions, faces, voices and lip sync, drawn in ink.
+  { group: "stick", name: "Alex", look: stickLook(false) },
+  { group: "stick", name: "Bea", look: stickLook(true, { accent: "#ef6f6c" }) },
+  { group: "stick", name: "Cal", look: stickLook(false, { hairStyle: "spiky", accessory: "glasses" }) },
+  { group: "stick", name: "Dee", look: stickLook(true, { hairStyle: "bun", accessory: "bow", accent: "#4ea8de" }) },
+  { group: "stick", name: "Eli", look: stickLook(false, { hairStyle: "bald", accessory: "cap", accent: "#3fae6a" }) },
+  { group: "stick", name: "Fay", look: stickLook(true, { hairStyle: "curly", accent: "#9b5de5" }) },
+  { group: "stick", name: "Gus", look: stickLook(false, { hairStyle: "bald", accessory: "tie", accent: "#ef6f6c", build: "broad" }) },
+  { group: "stick", name: "Hana", look: stickLook(true, { accent: "#ffb703", build: "slim" }) },
 ];
 
 export const SKIN_TONES = ["#f9d7bd", "#f1c29a", "#e9b48a", "#d7a37a", "#c68b62", "#b07850", "#8d5a3b", "#5e3b26"];
@@ -96,4 +111,6 @@ export const EXPRESSIONS: { id: CharacterKind["expression"]; label: string; icon
   { id: "surprised", label: "Surprised", icon: "😮" },
   { id: "thinking", label: "Thinking", icon: "🤔" },
   { id: "wink", label: "Wink", icon: "😉" },
+  { id: "worried", label: "Worried", icon: "😟" },
+  { id: "confused", label: "Confused", icon: "😕" },
 ];

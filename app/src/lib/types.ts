@@ -7,7 +7,8 @@ export type TransitionKind = "cut" | "fade" | "fadeBlack" | "slide" | "zoom";
 export type HairStyle = "bald" | "short" | "spiky" | "long" | "bun" | "curly";
 export type Build = "slim" | "regular" | "broad";
 export type Accessory = "none" | "glasses" | "tie" | "cap" | "bow";
-export type Expression = "neutral" | "happy" | "sad" | "angry" | "surprised" | "thinking" | "wink";
+export type Expression = "neutral" | "happy" | "sad" | "angry" | "surprised" | "thinking" | "wink" | "worried" | "confused";
+export type FigureStyle = "cartoon" | "stick";
 export type TextStyle = "bubble" | "thought" | "caption" | "title" | "plain";
 export type Tail = "bottomLeft" | "bottomRight" | "none";
 
@@ -48,6 +49,10 @@ export interface Look {
   build: Build;
   accessory: Accessory;
   accent: string;
+  /** "stick": line-drawn figure; `top` is the line colour, `skin` the head fill. */
+  style?: FigureStyle;
+  /** Stick figures: wear a dress in the `accent` colour. */
+  dress?: boolean;
 }
 
 export interface CharacterKind {
