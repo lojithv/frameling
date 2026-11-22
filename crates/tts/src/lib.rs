@@ -176,10 +176,9 @@ impl Tts {
         let mut out = Vec::new();
         if let Some(dir) = &self.model_dir {
             for (id, name) in supertonic::installed_voices(dir) {
-                let kind = if id.starts_with('F') { "female" } else { "male" };
                 out.push(Voice {
                     id: format!("supertonic:{id}"),
-                    name: format!("{name} ({kind})"),
+                    name: name.to_string(),
                     language: "en".into(),
                     engine: "supertonic".into(),
                     credit: SUPERTONIC_CREDIT.into(),

@@ -47,7 +47,7 @@
   const groups = $derived.by(() => {
     const g = new Map<string, Voice[]>();
     for (const v of voices) {
-      const key = v.engine === "supertonic" ? "Built-in voices" : "System voices";
+      const key = v.engine !== "supertonic" ? "System voices" : v.id.startsWith("supertonic:F") ? "Built-in voices · female" : "Built-in voices · male";
       if (!g.has(key)) g.set(key, []);
       g.get(key)!.push(v);
     }
@@ -228,7 +228,7 @@
   .credit { color: var(--muted); font-size: 11px; margin: -4px 0 8px; }
   .voice-row { display: flex; gap: 6px; margin-bottom: 8px; }
   .voice-row select { flex: 1; min-width: 0; }
-  .voice-row select.lang { flex: 0 0 96px; }
+  .voice-row select.lang { flex: 0 0 88px; }
   .terms { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 11.5px; line-height: 1.45; }
   .terms p { margin: 0 0 8px; }
   .terms code { word-break: break-all; }

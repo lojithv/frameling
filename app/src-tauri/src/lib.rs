@@ -95,7 +95,7 @@ async fn tts_synthesize(app: tauri::AppHandle, text: String, voice: String, spee
 /// plus the path of the full licence text.
 #[tauri::command]
 fn tts_terms(app: tauri::AppHandle) -> (String, Option<String>) {
-    let licence = tts(&app).model_dir.map(|d| d.join("LICENSE")).filter(|p| p.is_file()).map(|p| p.to_string_lossy().to_string());
+    let licence = tts(&app).model_dir.map(|d| d.join("LICENSE")).filter(|p| p.is_file()).map(|p| p.to_string_lossy().trim_start_matches(r"\\?\").to_string());
     (frameling_tts::SUPERTONIC_TERMS.to_string(), licence)
 }
 
