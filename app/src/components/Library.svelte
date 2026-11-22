@@ -92,6 +92,7 @@
           {#if (c.group === "stick") === stick}
           <button
             class="card"
+            class:paper={stick}
             draggable="true"
             ondragstart={(e) => dragData(e, { kind: "character", index: i })}
             onclick={() => add(newCharacter(c.look, c.name))}
@@ -111,6 +112,7 @@
           {#each list as p}
             <button
               class="card"
+              class:paper={cat === "Stick"}
               draggable="true"
               ondragstart={(e) => dragData(e, { kind: "prop", id: p.id, name: p.name })}
               onclick={() => add(newProp(p.id, p.name))}
@@ -256,6 +258,11 @@
     max-height: 96px;
     object-fit: contain;
     pointer-events: none;
+  }
+  /* Ink-drawn stick art needs a light backdrop to show on the dark panel. */
+  .card.paper img {
+    background: #f6f4ee;
+    border-radius: 8px;
   }
   .bgs {
     grid-template-columns: 1fr;
