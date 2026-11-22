@@ -1,6 +1,7 @@
 //! The project document. Plain data, serialised as JSON (camelCase), so a
 //! project is human-readable, diff-able and easy to generate from scripts.
 
+use crate::anim::Tracks;
 use crate::geom::{Color, Ease};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -9,7 +10,10 @@ use std::sync::Arc;
 pub type Id = String;
 
 /// Bump when the format changes; `migrate()` upgrades older files.
-pub const FORMAT_VERSION: u32 = 1;
+///
+/// - 2: items and scenes can carry keyframe `tracks`, and characters can carry
+///   named `outfits`. Version 1 files load unchanged (they have no tracks).
+pub const FORMAT_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -61,6 +65,13 @@ impl Project {
         }
         self.version = FORMAT_VERSION;
         self.fps = self.fps.clamp(1, 120);
+        // Hand-written files may have unsorted or duplicate keys.
+        for s in &mut self.scenes {
+            crate::anim::normalize_tracks(&mut s.tracks);
+            for it in &mut s.items {
+                crate::anim::normalize_tracks(&mut it.tracks);
+            }
+        }
         Ok(())
     }
 
@@ -114,6 +125,9 @@ pub struct Scene {
     /// Drawn back-to-front.
     pub items: Vec<Item>,
     pub audio: Vec<AudioClip>,
+    /// Keyframe tracks for the scene itself (`camera.x`, `camera.y`, `camera.zoom`).
+    #[serde(skip_serializing_if = "Tracks::is_empty")]
+    pub tracks: Tracks,
 }
 
 impl Default for Scene {
@@ -133,6 +147,7 @@ impl Scene {
             transition: Transition::default(),
             items: Vec::new(),
             audio: Vec::new(),
+            tracks: Tracks::new(),
         }
     }
     pub fn item(&self, id: &str) -> Option<&Item> {
@@ -256,6 +271,10 @@ pub struct Item {
     pub motion: Option<Motion>,
     pub locked: bool,
     pub kind: ItemKind,
+    /// Keyframe tracks by path (`transform.x`, `bone.forearm_l.rot`, `look.skin`,
+    /// `outfit`, ...). Keyed values override the fields above; see `anim::path`.
+    #[serde(skip_serializing_if = "Tracks::is_empty")]
+    pub tracks: Tracks,
 }
 
 impl Default for Item {
@@ -276,6 +295,7 @@ impl Default for Item {
             motion: None,
             locked: false,
             kind: ItemKind::Prop(PropItem::default()),
+            tracks: Tracks::new(),
         }
     }
 }
@@ -305,6 +325,9 @@ pub struct CharacterItem {
     pub voice: Option<String>,
     /// Default speaking speed for new lines (1.0 = normal).
     pub voice_speed: f32,
+    /// Named costumes that the `outfit` track can switch to.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub outfits: BTreeMap<String, LookPatch>,
 }
 
 impl Default for CharacterItem {
@@ -318,6 +341,7 @@ impl Default for CharacterItem {
             auto_talk: true,
             voice: None,
             voice_speed: 1.0,
+            outfits: BTreeMap::new(),
         }
     }
 }
@@ -339,6 +363,45 @@ pub struct Look {
     pub style: FigureStyle,
     /// Wear a dress (stick figures): `accent` is its colour.
     pub dress: bool,
+}
+
+/// A partial look: the fields an outfit (costume) changes. Unset fields keep
+/// the character's own look.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct LookPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skin: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hair: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hair_style: Option<HairStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bottom: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shoes: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<Build>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accessory: Option<Accessory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub style: Option<FigureStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dress: Option<bool>,
+}
+
+impl LookPatch {
+    /// Copy the set fields onto a look.
+    pub fn apply(&self, l: &mut Look) {
+        macro_rules! set {
+            ($($f:ident),*) => { $(if let Some(v) = self.$f { l.$f = v; })* };
+        }
+        set!(skin, hair, hair_style, top, bottom, shoes, build, accessory, accent, style, dress);
+    }
 }
 
 /// How a character is drawn. Both styles share poses, actions, expressions

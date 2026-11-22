@@ -67,13 +67,14 @@
   }
 
   // ------------------------------------------------------------ camera math
+  /** Camera at a local frame, from the engine (includes camera keyframes). */
   function camAt(s: Scene, f: number) {
-    const c = s.camera;
-    if (!c.moving) return c.from;
-    const t = Math.min(1, Math.max(0, f / Math.max(1, s.duration - 1)));
-    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    const lerp = (a: number, b: number) => a + (b - a) * (c.ease === "linear" ? t : e);
-    return { x: lerp(c.from.x, c.to.x), y: lerp(c.from.y, c.to.y), zoom: lerp(c.from.zoom, c.to.zoom) };
+    const i = app.project?.scenes.findIndex((x) => x.id === s.id) ?? -1;
+    if (app.ready && i >= 0) {
+      const [x, y, zoom] = eng().camera_at(i, f);
+      return { x, y, zoom };
+    }
+    return s.camera.from;
   }
   /** Scene (world) coords -> stage css px. */
   function toScreen(x: number, y: number) {

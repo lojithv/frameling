@@ -4,6 +4,7 @@
 //! commands, so anything a person can do can also be automated, and every
 //! change is undoable.
 
+use crate::anim::{Channel, Interp, Key, Tracks};
 use crate::model::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -31,8 +32,46 @@ pub enum Command {
     /// previous line unless `start` is given) and lengthens the scene to fit,
     /// like a dialogue track.
     AddLine { scene: Id, clip_id: Id, media: Media, speaker: Option<Id>, start: Option<u32> },
+    /// Insert or replace keys on a track (a key at an existing frame is
+    /// replaced). `item` = None targets the scene's own tracks (camera).
+    /// `replace` = true discards the track's other keys first.
+    SetKeys {
+        scene: Id,
+        item: Option<Id>,
+        path: String,
+        keys: Vec<Key>,
+        #[serde(default)]
+        replace: bool,
+    },
+    /// Delete keys. No `path` = every track on the target; no `frames`, `from`
+    /// or `to` = the whole track. `from`/`to` are an inclusive frame range.
+    DeleteKeys {
+        scene: Id,
+        item: Option<Id>,
+        path: Option<String>,
+        frames: Option<Vec<u32>>,
+        from: Option<u32>,
+        to: Option<u32>,
+    },
+    /// Change the interpolation of keys (all keys on the track if `frames` is None).
+    SetInterpolation { scene: Id, item: Option<Id>, path: String, frames: Option<Vec<u32>>, interp: Interp },
+    /// Define (or with `outfit` = None, remove) a named costume on a character,
+    /// which an `outfit` track can then switch to.
+    DefineOutfit { scene: Id, item: Id, name: String, outfit: Option<LookPatch> },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
+}
+
+/// The track map a key command targets, plus the item kind (None = scene).
+fn tracks_mut<'a>(p: &'a mut Project, scene: &str, item: Option<&str>) -> Result<(&'a mut Tracks, Option<&'a ItemKind>), String> {
+    let s = scene_mut(p, scene)?;
+    match item {
+        None => Ok((&mut s.tracks, None)),
+        Some(id) => {
+            let it = s.items.iter_mut().find(|i| i.id == id).ok_or_else(|| format!("no item {id:?} in scene {scene:?}"))?;
+            Ok((&mut it.tracks, Some(&it.kind)))
+        }
+    }
 }
 
 fn scene_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Scene, String> {
@@ -186,6 +225,84 @@ impl Command {
                     s.duration = end + fps / 2;
                 }
                 s.audio.push(AudioClip { id: clip_id.clone(), media: media.id.clone(), start: at, speaker: speaker.clone(), ..Default::default() });
+            }
+            Command::SetKeys { scene, item, path, keys, replace } => {
+                let ch = Channel::parse(path)?;
+                let (tracks, kind) = tracks_mut(p, scene, item.as_deref())?;
+                ch.check_target(kind)?;
+                let character = match kind {
+                    Some(ItemKind::Character(c)) => Some(c),
+                    _ => None,
+                };
+                let keys = keys
+                    .iter()
+                    .map(|k| Ok(Key { value: ch.normalize(&k.value, character)?, ..k.clone() }))
+                    .collect::<Result<Vec<Key>, String>>()?;
+                let track = tracks.entry(ch.path().to_string()).or_default();
+                if *replace {
+                    track.keys.clear();
+                }
+                track.upsert(keys);
+                if track.keys.is_empty() {
+                    tracks.remove(ch.path());
+                }
+            }
+            Command::DeleteKeys { scene, item, path, frames, from, to } => {
+                let (tracks, _) = tracks_mut(p, scene, item.as_deref())?;
+                let paths: Vec<String> = match path {
+                    Some(pa) => {
+                        let canon = Channel::parse(pa)?.path().to_string();
+                        if !tracks.contains_key(&canon) {
+                            return Err(format!("no {canon} track here"));
+                        }
+                        vec![canon]
+                    }
+                    None => tracks.keys().cloned().collect(),
+                };
+                let whole = frames.is_none() && from.is_none() && to.is_none();
+                let ranged = from.is_some() || to.is_some();
+                let (lo, hi) = (from.unwrap_or(0), to.unwrap_or(u32::MAX));
+                for pa in paths {
+                    let t = tracks.get_mut(&pa).expect("listed above");
+                    if whole {
+                        t.keys.clear();
+                    } else {
+                        t.keys.retain(|k| {
+                            let listed = frames.as_ref().is_some_and(|f| f.contains(&k.frame));
+                            let in_range = ranged && k.frame >= lo && k.frame <= hi;
+                            !(listed || in_range)
+                        });
+                    }
+                    if t.keys.is_empty() {
+                        tracks.remove(&pa);
+                    }
+                }
+            }
+            Command::SetInterpolation { scene, item, path, frames, interp } => {
+                let (tracks, _) = tracks_mut(p, scene, item.as_deref())?;
+                let canon = Channel::parse(path)?.path();
+                let t = tracks.get_mut(canon).ok_or_else(|| format!("no {canon} track here"))?;
+                for k in &mut t.keys {
+                    if frames.as_ref().is_none_or(|f| f.contains(&k.frame)) {
+                        k.interp = *interp;
+                    }
+                }
+            }
+            Command::DefineOutfit { scene, item, name, outfit } => {
+                if name.is_empty() || name == "default" {
+                    return Err("outfit name must not be empty or \"default\"".into());
+                }
+                let s = scene_mut(p, scene)?;
+                let it = s.items.iter_mut().find(|i| &i.id == item).ok_or_else(|| format!("no item {item:?}"))?;
+                let ItemKind::Character(c) = &mut it.kind else { return Err(format!("{item:?} is not a character")) };
+                match outfit {
+                    Some(o) => {
+                        c.outfits.insert(name.clone(), o.clone());
+                    }
+                    None => {
+                        c.outfits.remove(name).ok_or_else(|| format!("no outfit {name:?}"))?;
+                    }
+                }
             }
             Command::Batch { commands } => {
                 for c in commands {

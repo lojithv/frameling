@@ -12,13 +12,18 @@
    can reference per-item slots (`$0`, `$1d` = darker), which gives recolouring for free.
 4. **Rig** (`core/rig.rs`): characters are drawn procedurally from a `Look` and a `Pose`
    (joint angles). Actions are keyframed poses in packs, sampled with smoothstep and looped.
-5. **Evaluator** (`core/eval.rs`): `evaluate(project, lib, frame) -> DisplayList`. Resolves the
+5. **Keyframes** (`core/anim/`): one engine for every animatable property. Items and scenes carry
+   `tracks` (path → keys, e.g. `transform.x`, `bone.forearm_l.rot`, `look.skin`, `outfit`,
+   `camera.zoom`). `track.rs` holds keys, interpolation (constant, linear, eases, back, elastic,
+   bounce, CSS bezier) and binary-search sampling; `path.rs` is the path grammar and value
+   validation. Keyed values override static fields, so unkeyed projects render unchanged.
+6. **Evaluator** (`core/eval.rs`): `evaluate(project, lib, frame) -> DisplayList`. Resolves the
    scene, camera, motion paths, enter/exit effects, actions, blinking (hashed per item, no RNG),
    lip-sync level from the audio envelope, text layout and transitions.
-6. **Display list** (`core/display.rs`): groups (transform + opacity), fills (solid / linear
+7. **Display list** (`core/display.rs`): groups (transform + opacity), fills (solid / linear
    gradient) and strokes. Text is converted to glyph outlines in core, so renderers don't need fonts.
-7. **Renderer** (`render`): tiny-skia, CPU, deterministic. Runs in WASM (preview) and natively (export).
-8. **Export** (`export`): renders frames in parallel batches, writes them in order to FFmpeg's
+8. **Renderer** (`render`): tiny-skia, CPU, deterministic. Runs in WASM (preview) and natively (export).
+9. **Export** (`export`): renders frames in parallel batches, writes them in order to FFmpeg's
    stdin as raw RGBA, mixes audio with `atrim/adelay/amix` placed by frame number.
 
 ## Why the UI runs the engine as WASM, even on desktop

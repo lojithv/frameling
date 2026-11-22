@@ -33,6 +33,11 @@ in the desktop app to watch the agent work.
 | `export_video` | Render MP4/WebM to a path |
 | `undo` / `redo` | History |
 | `new_project` | Start blank or from the demo |
+| `set_keys` | Keyframe any property over time (see Keyframes below) |
+| `delete_keys` | Delete keys by frame/second, by range, a whole track, or every track on an item |
+| `list_tracks` | Show an item's (or scene's) tracks, keys, outfits and the path grammar |
+| `set_interpolation` | Change how keys ease into the next key |
+| `define_outfit` | Name a costume on a character, for `outfit` keys to switch to |
 | `command_reference` | This document |
 
 A good loop: `get_library` → `script_to_video` or `apply_commands` → `render_frame` to check →
@@ -70,6 +75,10 @@ All times are **frames** (project fps, default 30). Positions are stage pixels o
 {"op":"removeItem","scene":"s1","id":"maya"} {"op":"moveItem","scene":"s1","id":"maya","to":0}   // z-order, 0 = back
 {"op":"addAudio","scene":"s1","clip":{"id":"c1","media":"m1","start":30,"speaker":"maya","volume":1}}
 {"op":"updateAudio",...} {"op":"removeAudio","scene":"s1","id":"c1"}
+{"op":"setKeys","scene":"s1","item":"maya","path":"transform.x","keys":[{"frame":0,"value":300,"interp":"easeInOut"},{"frame":60,"value":900}],"replace":false}
+{"op":"deleteKeys","scene":"s1","item":"maya","path":"transform.x","frames":[60]}   // or "from"/"to"; no path = all tracks
+{"op":"setInterpolation","scene":"s1","item":"maya","path":"transform.x","frames":null,"interp":"bounce"}
+{"op":"defineOutfit","scene":"s1","item":"leo","name":"suit","outfit":{"top":"#222222","accessory":"tie"}}   // outfit null removes
 {"op":"batch","commands":[...]}
 ```
 
@@ -96,3 +105,42 @@ enter/exit (none|fade|pop|slideLeft|slideRight|slideUp), motion {x, y, start, en
 Easing: `linear | inOut | in | out | back`. Colours: `#rrggbb` or `#rrggbbaa`.
 Characters with `motion` walk automatically and face where they're going; characters with a
 `speaker` line lip-sync and gesture.
+
+## Keyframes (`set_keys`, `setKeys`)
+
+One keyframe engine animates everything. A **track** is a list of keys on one property path;
+items and scenes carry a `tracks` map (`{"transform.x": {"keys": [...]}}`). Keyed values override
+the item's own fields (and its `motion`), so unkeyed items behave exactly as before.
+
+A key is `{"frame": 30, "value": ..., "interp": "easeInOut"}`. Frames are scene-local; the MCP
+tools also accept `"seconds"`. `interp` shapes the segment from this key **to the next one**:
+`constant` (hold, then jump), `linear` (default), `easeIn`, `easeOut`, `easeInOut`, `back`
+(overshoot), `elastic`, `bounce`, or `{"bezier":[x1,y1,x2,y2]}` (CSS `cubic-bezier`). Before the
+first key and after the last, a track holds that key's value. Numbers and colours blend; bools,
+enums, expressions and outfits switch exactly on their key's frame.
+
+| path | applies to | value |
+|---|---|---|
+| `transform.x`, `transform.y` | any item | stage px (characters walk automatically while x changes) |
+| `transform.rotation` | any item | degrees, clockwise |
+| `transform.scale` | any item | replaces the item's scale |
+| `transform.scaleX`, `transform.scaleY` | any item | multipliers for squash and stretch |
+| `transform.opacity` | any item | 0..1 |
+| `transform.flip` | any item | bool |
+| `bone.<bone>.rot` | character | degrees; overrides the current action while keyed |
+| `look.skin`, `look.hair`, `look.top`, `look.bottom`, `look.shoes`, `look.accent` | character | `#rrggbb` |
+| `look.hairStyle`, `look.build`, `look.accessory`, `look.style`, `look.dress` | character | enum name / bool |
+| `outfit` | character | an outfit name, `"default"`, or a partial look object |
+| `expression` | character | expression name |
+| `camera.x`, `camera.y`, `camera.zoom` | scene (omit `item`) | stage px / zoom factor |
+
+Bones: `bone.root.y` (lift, px), `bone.spine.y` (bob, px), `bone.spine.rot` (lean),
+`bone.head.rot`, `bone.upper_arm_l.rot`, `bone.forearm_l.rot`, `bone.upper_arm_r.rot`,
+`bone.forearm_r.rot`, `bone.thigh_l.rot`, `bone.shin_l.rot`, `bone.thigh_r.rot`, `bone.shin_r.rot`,
+`bone.eyes.x` (-1..1), `bone.hand_r.thumb` (0..1). `_l`/`_r` are screen-left/right. Arm and leg angles
+are measured from hanging straight down; positive raises the limb outward on its own side. Short
+aliases (`bone.ls`, `bone.le`, `x`, `skin`, `costume`, ...) are accepted and stored under the names above.
+
+Costume swap: `define_outfit` with `{"top":"#222222","bottom":"#222222","accessory":"tie"}`, then
+`set_keys` path `outfit` with `[{"seconds":0,"value":"default"},{"seconds":2,"value":"suit"}]`.
+Single `look.*` keys win over the outfit, so a character can turn green while wearing the suit.

@@ -32,10 +32,24 @@ export interface Scene {
   transition: { kind: TransitionKind; duration: number };
   items: Item[];
   audio: AudioClip[];
+  /** Keyframe tracks for the scene camera (camera.x, camera.y, camera.zoom). */
+  tracks?: Tracks;
 }
 
 export interface CamKey { x: number; y: number; zoom: number }
 export interface Camera { from: CamKey; to: CamKey; moving: boolean; ease: Ease }
+
+/** Keyframe interpolation: how a key eases into the next one. */
+export type Interp =
+  | "constant" | "linear" | "easeIn" | "easeOut" | "easeInOut" | "back" | "elastic" | "bounce"
+  | { bezier: [number, number, number, number] };
+/** One key. `value` is a number, "#rrggbb", bool, enum name or outfit depending on the path. */
+export interface Key { frame: number; value: unknown; interp?: Interp }
+export interface Track { keys: Key[] }
+/** Tracks by path: transform.x, bone.forearm_l.rot, look.skin, outfit, expression, camera.zoom, ... */
+export type Tracks = Record<string, Track>;
+/** A costume: the look fields it changes. */
+export type LookPatch = Partial<Look>;
 
 export interface Motion { x: number; y: number; start: number; end: number; ease: Ease }
 
@@ -65,6 +79,8 @@ export interface CharacterKind {
   autoTalk: boolean;
   voice: string | null;
   voiceSpeed: number;
+  /** Named costumes the `outfit` track can switch to. */
+  outfits?: Record<string, LookPatch>;
 }
 export interface PropKind { type: "prop"; prop: string; colors: string[] }
 export interface TextKind {
@@ -96,6 +112,8 @@ export interface Item {
   motion: Motion | null;
   locked: boolean;
   kind: ItemKind;
+  /** Keyframe tracks; keyed values override the fields above. */
+  tracks?: Tracks;
 }
 
 export interface AudioClip {
@@ -154,4 +172,8 @@ export type Command =
   | { op: "updateAudio"; scene: Id; clip: AudioClip }
   | { op: "removeAudio"; scene: Id; id: Id }
   | { op: "addLine"; scene: Id; clipId: Id; media: Media; speaker: Id | null; start: number | null }
+  | { op: "setKeys"; scene: Id; item?: Id | null; path: string; keys: Key[]; replace?: boolean }
+  | { op: "deleteKeys"; scene: Id; item?: Id | null; path?: string | null; frames?: number[] | null; from?: number | null; to?: number | null }
+  | { op: "setInterpolation"; scene: Id; item?: Id | null; path: string; frames?: number[] | null; interp: Interp }
+  | { op: "defineOutfit"; scene: Id; item: Id; name: string; outfit: LookPatch | null }
   | { op: "batch"; commands: Command[] };

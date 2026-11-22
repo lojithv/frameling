@@ -23,6 +23,7 @@ declare module "*/engine/frameling.js" {
     locate(frame: number): Uint32Array;
     render_scene(scene: number, local: number, width: number, height: number): Uint8Array;
     last_hits(): string;
+    camera_at(scene: number, local: number): Float32Array;
     render_frame(frame: number, width: number, height: number): Uint8Array;
     audio_events(): string;
     render_item_preview(itemJson: string, width: number, height: number, frame: number): Uint8Array;

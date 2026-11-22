@@ -4,11 +4,12 @@
 //! always give the same `DisplayList`. Time is an integer frame number, never
 //! the wall clock, which is what makes export frame-exact and repeatable.
 
+use crate::anim;
 use crate::display::{DisplayList, Op, Path};
 use crate::geom::{hash_str, lerp, Affine, Color, Ease, Rect};
 use crate::model::*;
 use crate::pack::Library;
-use crate::rig::{draw_character, sample_action, Face, Pose};
+use crate::rig::{draw_character, sample_action, Face};
 use crate::text;
 use serde::Serialize;
 
@@ -87,15 +88,22 @@ pub fn evaluate_scene(project: &Project, lib: &Library, scene: usize, local: u32
     (dl, hits)
 }
 
-/// Camera transform for a scene at a local frame.
-pub fn camera_transform(project: &Project, scene: &Scene, local: u32) -> Affine {
+/// Camera centre and zoom at a local frame: the scene's from/to move, with
+/// any `camera.*` keyframe tracks on top.
+pub fn camera_at(scene: &Scene, local: u32) -> CamKey {
     let cam = &scene.camera;
-    let k = if cam.moving {
+    let base = if cam.moving {
         let t = cam.ease.apply(local as f32 / (scene.duration.max(2) - 1) as f32);
         CamKey { x: lerp(cam.from.x, cam.to.x, t), y: lerp(cam.from.y, cam.to.y, t), zoom: lerp(cam.from.zoom, cam.to.zoom, t) }
     } else {
         cam.from
     };
+    anim::camera(scene, base, local)
+}
+
+/// Camera transform for a scene at a local frame.
+pub fn camera_transform(project: &Project, scene: &Scene, local: u32) -> Affine {
+    let k = camera_at(scene, local);
     let (w, h) = (project.width as f32, project.height as f32);
     let z = k.zoom.max(0.05);
     Affine::translate(w / 2.0, h / 2.0).then(&Affine::scale(z, z)).then(&Affine::translate(-k.x, -k.y))
@@ -139,17 +147,11 @@ fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Ve
     (vec![Op::group(cam, 1.0, world)], hits)
 }
 
-/// Where an item is at a local frame, accounting for its motion path.
+/// Where an item is at a local frame (motion path and keyframes), whether it
+/// is moving, and which way (-1, 0, 1).
 pub fn item_position(item: &Item, local: u32) -> (f32, f32, bool, f32) {
-    match item.motion {
-        Some(m) if m.end > m.start => {
-            let t = (local as f32 - m.start as f32) / (m.end - m.start) as f32;
-            let e = m.ease.apply(t);
-            let moving = local >= m.start && local < m.end;
-            (lerp(item.x, m.x, e), lerp(item.y, m.y, e), moving, (m.x - item.x).signum())
-        }
-        _ => (item.x, item.y, false, 0.0),
-    }
+    let t = anim::item_transform(item, local);
+    (t.x, t.y, t.moving, t.dir)
 }
 
 fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: u32) -> Option<Op> {
@@ -159,9 +161,10 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
     }
     let fps = project.fps.max(1) as f32;
     let since = (local - item.start) as f32;
-    let (mut x, mut y, moving, dir) = item_position(item, local);
-    let mut opacity = item.opacity.clamp(0.0, 1.0);
-    let mut scale = item.scale;
+    let tr = anim::item_transform(item, local);
+    let (mut x, mut y, moving, dir, flip) = (tr.x, tr.y, tr.moving, tr.dir, tr.flip);
+    let mut opacity = tr.opacity.clamp(0.0, 1.0);
+    let mut scale = tr.scale;
 
     // Enter / exit effects
     let scene_end = item.end.unwrap_or(scene.duration.max(1));
@@ -209,12 +212,14 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
                 .map(|a| sample_action(a, secs))
                 .unwrap_or_default();
             if moving && c.auto_walk {
-                pose.look = if item.flip { -dir } else { dir };
+                pose.look = if flip { -dir } else { dir };
             }
+            anim::apply_bones(&item.tracks, &mut pose, local);
             let phase = (hash_str(&item.id) % 1000) as f32 / 1000.0 * 3.0;
             let blink = ((local as f32 / fps) + phase).rem_euclid(3.6) < 0.12;
-            let face = Face { expression: c.expression, blink, mouth: level.unwrap_or(0) };
-            draw_character(&c.look, &Pose { ..pose }, &face)
+            let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth: level.unwrap_or(0) };
+            let look = anim::resolve_look(c, &item.tracks, local);
+            draw_character(&look, &pose, &face)
         }
         ItemKind::Prop(p) => match lib.props.get(&p.prop) {
             Some(d) => d.ops(&p.colors),
@@ -222,10 +227,11 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
         },
         ItemKind::Text(t) => text_ops(t, since, fps),
     };
-    let sx = if item.flip { -scale } else { scale };
-    let tf = Affine::translate(x, y).then(&Affine::rotate_deg(item.rotation)).then(&Affine::scale(sx, scale));
+    let sy = scale * tr.scale_y;
+    let sx = (if flip { -scale } else { scale }) * tr.scale_x;
+    let tf = Affine::translate(x, y).then(&Affine::rotate_deg(tr.rotation)).then(&Affine::scale(sx, sy));
     // Text should never render mirrored.
-    let tf = if matches!(item.kind, ItemKind::Text(_)) && item.flip {
+    let tf = if matches!(item.kind, ItemKind::Text(_)) && flip {
         tf.then(&Affine::scale(-1.0, 1.0))
     } else {
         tf

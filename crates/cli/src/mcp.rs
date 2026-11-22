@@ -47,8 +47,47 @@ fn tools() -> Value {
         tool("undo", "Undo the last change.", obj(json!({}), &[])),
         tool("redo", "Redo the last undone change.", obj(json!({}), &[])),
         tool("new_project", "Start a new project, blank or from the demo template.", obj(json!({ "template": { "type": "string", "enum": ["blank", "demo"] } }), &[])),
-        tool("command_reference", "Full reference for commands, item fields, the screenplay format and the workflow.", obj(json!({}), &[])),
+        tool("set_keys", "Keyframe any property over time: position, rotation, scale, squash/stretch, opacity, flip, bones (character joints), skin and clothing colours, outfit (costume) swaps, expression, or the scene camera. Keys at an existing frame are replaced. Each key's interp shapes the move to the NEXT key. Example: {\"scene\":\"s1\",\"item\":\"maya\",\"path\":\"transform.x\",\"keys\":[{\"seconds\":0,\"value\":300,\"interp\":\"easeInOut\"},{\"seconds\":2,\"value\":900}]}. Call list_tracks for every valid path.", obj(json!({
+            "scene": { "type": "string" },
+            "item": { "type": "string", "description": "item id; omit for scene tracks (camera.x, camera.y, camera.zoom)" },
+            "path": { "type": "string", "description": "e.g. transform.x, transform.rotation, bone.forearm_r.rot, look.skin, outfit, expression, camera.zoom" },
+            "keys": { "type": "array", "items": { "type": "object", "properties": {
+                "frame": { "type": "integer", "description": "scene-local frame (or give seconds)" },
+                "seconds": { "type": "number", "description": "time in the scene, converted to the nearest frame" },
+                "value": { "description": "number, \"#rrggbb\" colour, bool, enum name, outfit name, or a partial look object for outfit" },
+                "interp": { "description": "constant | linear (default) | easeIn | easeOut | easeInOut | back | elastic | bounce | {\"bezier\":[x1,y1,x2,y2]}" }
+            }, "required": ["value"] } },
+            "replace": { "type": "boolean", "description": "drop the track's other keys first" }
+        }), &["scene", "path", "keys"])),
+        tool("delete_keys", "Delete keys. Give frames or seconds to delete those keys, from/to (seconds, inclusive) for a range, or neither to delete the whole track. Omit path to clear every track on the item (or scene).", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "path": { "type": "string" },
+            "frames": { "type": "array", "items": { "type": "integer" } },
+            "seconds": { "type": "array", "items": { "type": "number" } },
+            "from_seconds": { "type": "number" }, "to_seconds": { "type": "number" }
+        }), &["scene"])),
+        tool("list_tracks", "List the keyframe tracks on an item (or on the scene if item is omitted), with every key's frame, time, value and interpolation, plus the item's outfits and the full path grammar.", obj(json!({ "scene": { "type": "string" }, "item": { "type": "string" } }), &["scene"])),
+        tool("set_interpolation", "Change how keys ease into the next key (all keys on the track, or only those at the given frames/seconds).", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "path": { "type": "string" },
+            "interp": { "description": "constant | linear | easeIn | easeOut | easeInOut | back | elastic | bounce | {\"bezier\":[x1,y1,x2,y2]}" },
+            "frames": { "type": "array", "items": { "type": "integer" } },
+            "seconds": { "type": "array", "items": { "type": "number" } }
+        }), &["scene", "path", "interp"])),
+        tool("define_outfit", "Define a named costume on a character (a partial look: skin, hair, hairStyle, top, bottom, shoes, build, accessory, accent, style, dress). Switch to it with set_keys path 'outfit', value '<name>' (or 'default' for the character's own look). Pass outfit null to remove it.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "name": { "type": "string" },
+            "outfit": { "type": ["object", "null"], "description": "e.g. {\"top\":\"#222222\",\"bottom\":\"#222222\",\"accessory\":\"tie\"}" }
+        }), &["scene", "item", "name", "outfit"])),
+        tool("command_reference","Full reference for commands, item fields, the screenplay format and the workflow.", obj(json!({}), &[])),
     ])
+}
+
+/// The track path grammar, generated from the engine's own tables.
+fn path_help() -> String {
+    let mut o = String::from("\nPaths:\n  any item: transform.x, transform.y (scene px), transform.rotation (degrees clockwise), transform.scale, transform.scaleX / transform.scaleY (multipliers, squash and stretch), transform.opacity (0-1), transform.flip (bool)\n  characters: look.skin, look.hair, look.top, look.bottom, look.shoes, look.accent (\"#rrggbb\", blend smoothly); look.hairStyle, look.build, look.accessory, look.style, look.dress, outfit, expression (switch on the key's frame)\n  scene (omit item): camera.x, camera.y, camera.zoom\n  character bones (override the current action while keyed):\n");
+    for (path, alias, _, what) in anim::path::BONES {
+        o += &format!("    {path} (alias {alias}): {what}\n");
+    }
+    o += "Keyed values override the item's own fields. Before the first key and after the last, a track holds that key's value.\n";
+    o
 }
 
 fn text(s: impl Into<String>) -> Value {
@@ -79,6 +118,9 @@ impl Server {
         let mut o = format!("Project {:?}: {}x{} @ {} fps, {} scenes, {:.1}s total\n", p.name, p.width, p.height, p.fps, p.scenes.len(), p.total_frames() as f32 / fps);
         for (i, s) in p.scenes.iter().enumerate() {
             o += &format!("\n[{}] scene id={:?} name={:?} background={} length={:.1}s transition={:?}\n", i + 1, s.id, s.name, s.background.preset, s.duration as f32 / fps, s.transition.kind);
+            if !s.tracks.is_empty() {
+                o += &format!("  camera keyed: {}\n", s.tracks.iter().map(|(p, t)| format!("{p}({})", t.keys.len())).collect::<Vec<_>>().join(", "));
+            }
             for it in &s.items {
                 let what = match &it.kind {
                     ItemKind::Character(c) => format!("character action={} expression={:?} voice={}", c.action, c.expression, c.voice.as_deref().unwrap_or("-")),
@@ -91,7 +133,12 @@ impl Server {
                     None => String::new(),
                 };
                 let mv = it.motion.map(|m| format!(" moves to ({:.0},{:.0}) {:.1}-{:.1}s", m.x, m.y, m.start as f32 / fps, m.end as f32 / fps)).unwrap_or_default();
-                o += &format!("  - id={:?} {:?} at ({:.0},{:.0}) scale {:.2}{}{}: {}\n", it.id, it.name, it.x, it.y, it.scale, timing, mv, what);
+                let keyed = if it.tracks.is_empty() {
+                    String::new()
+                } else {
+                    format!(" keyed: {}", it.tracks.iter().map(|(p, t)| format!("{p}({})", t.keys.len())).collect::<Vec<_>>().join(", "))
+                };
+                o += &format!("  - id={:?} {:?} at ({:.0},{:.0}) scale {:.2}{}{}: {}{}\n", it.id, it.name, it.x, it.y, it.scale, timing, mv, what, keyed);
             }
             for c in &s.audio {
                 let m = p.media.get(&c.media);
@@ -104,6 +151,69 @@ impl Server {
             }
         }
         o
+    }
+
+    /// A frame from `frame_key` (integer) or `secs_key` (seconds, rounded).
+    fn frame_arg(&self, v: &Value, frame_key: &str, secs_key: &str) -> Result<Option<u32>, String> {
+        if let Some(f) = v.get(frame_key).filter(|f| !f.is_null()) {
+            return f.as_u64().map(|f| Some(f as u32)).ok_or_else(|| format!("{frame_key} must be a whole number >= 0"));
+        }
+        match v.get(secs_key).filter(|f| !f.is_null()) {
+            Some(t) => {
+                let t = t.as_f64().ok_or_else(|| format!("{secs_key} must be a number"))?;
+                if t < 0.0 {
+                    return Err(format!("{secs_key} must be >= 0"));
+                }
+                Ok(Some((t * self.ed.project.fps as f64).round() as u32))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// `frames` and/or `seconds` arrays merged into one frame list.
+    fn frames_arg(&self, a: &Value) -> Result<Option<Vec<u32>>, String> {
+        let fps = self.ed.project.fps as f64;
+        let mut out = Vec::new();
+        let mut any = false;
+        if let Some(f) = a.get("frames").and_then(Value::as_array) {
+            any = true;
+            out.extend(f.iter().map(|v| v.as_u64().map(|v| v as u32).ok_or("frames must be whole numbers")).collect::<Result<Vec<_>, _>>()?);
+        }
+        if let Some(f) = a.get("seconds").and_then(Value::as_array) {
+            any = true;
+            out.extend(f.iter().map(|v| v.as_f64().map(|t| (t * fps).round().max(0.0) as u32).ok_or("seconds must be numbers")).collect::<Result<Vec<_>, _>>()?);
+        }
+        Ok(any.then_some(out))
+    }
+
+    /// Human-readable tracks of an item (or the scene), with times.
+    fn tracks_text(&self, scene: &str, item: Option<&str>) -> Result<String, String> {
+        let p = &self.ed.project;
+        let fps = p.fps as f32;
+        let sc = p.scene(scene).ok_or_else(|| format!("no scene {scene:?}"))?;
+        let (label, tracks, outfits) = match item {
+            Some(id) => {
+                let it = sc.item(id).ok_or_else(|| format!("no item {id:?} in scene {scene:?}"))?;
+                let outfits = match &it.kind {
+                    ItemKind::Character(c) => Some(&c.outfits),
+                    _ => None,
+                };
+                (format!("item {id:?}"), &it.tracks, outfits)
+            }
+            None => (format!("scene {scene:?}"), &sc.tracks, None),
+        };
+        let mut o = if tracks.is_empty() { format!("No tracks on {label}.\n") } else { format!("Tracks on {label}:\n") };
+        for (path, t) in tracks {
+            o += &format!("  {path}:\n");
+            for k in &t.keys {
+                let interp = serde_json::to_value(k.interp).map(|v| v.to_string()).unwrap_or_default();
+                o += &format!("    frame {} ({:.2}s) = {}  {}\n", k.frame, k.frame as f32 / fps, k.value, interp);
+            }
+        }
+        if let Some(of) = outfits.filter(|o| !o.is_empty()) {
+            o += &format!("Outfits: {}\n", serde_json::to_string(of).unwrap_or_default());
+        }
+        Ok(o)
     }
 
     fn call(&mut self, name: &str, a: &Value) -> Result<Value, String> {
@@ -232,6 +342,58 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 self.save()?;
                 Ok(text(self.outline()))
             }
+            "set_keys" => {
+                let scene = s("scene").ok_or("scene is required")?;
+                let keys = a.get("keys").and_then(Value::as_array).ok_or("keys must be an array")?;
+                let keys = keys
+                    .iter()
+                    .map(|k| {
+                        let frame = self.frame_arg(k, "frame", "seconds")?.ok_or("each key needs frame or seconds")?;
+                        let value = k.get("value").cloned().ok_or("each key needs a value")?;
+                        let interp = match k.get("interp") {
+                            Some(i) => serde_json::from_value(i.clone()).map_err(|e| format!("bad interp {i}: {e}"))?,
+                            None => Interp::Linear,
+                        };
+                        Ok(Key { frame, value, interp })
+                    })
+                    .collect::<Result<Vec<Key>, String>>()?;
+                let path = s("path").ok_or("path is required")?;
+                let n = keys.len();
+                let replace = a.get("replace").and_then(Value::as_bool).unwrap_or(false);
+                self.ed.apply(&Command::SetKeys { scene: scene.into(), item: s("item").map(Into::into), path: path.into(), keys, replace }, None)?;
+                self.save()?;
+                let canon = anim::Channel::parse(path)?.path();
+                Ok(text(format!("Set {n} key(s) on {canon}.\n\n{}", self.tracks_text(scene, s("item"))?)))
+            }
+            "delete_keys" => {
+                let scene = s("scene").ok_or("scene is required")?;
+                let frames = self.frames_arg(a)?;
+                let from = self.frame_arg(a, "from_frame", "from_seconds")?;
+                let to = self.frame_arg(a, "to_frame", "to_seconds")?;
+                self.ed.apply(&Command::DeleteKeys { scene: scene.into(), item: s("item").map(Into::into), path: s("path").map(Into::into), frames, from, to }, None)?;
+                self.save()?;
+                Ok(text(format!("Deleted.\n\n{}", self.tracks_text(scene, s("item"))?)))
+            }
+            "list_tracks" => Ok(text(self.tracks_text(s("scene").ok_or("scene is required")?, s("item"))? + &path_help())),
+            "set_interpolation" => {
+                let scene = s("scene").ok_or("scene is required")?;
+                let interp: Interp = serde_json::from_value(a.get("interp").cloned().ok_or("interp is required")?).map_err(|e| format!("bad interp: {e}"))?;
+                let frames = self.frames_arg(a)?;
+                self.ed.apply(&Command::SetInterpolation { scene: scene.into(), item: s("item").map(Into::into), path: s("path").ok_or("path is required")?.into(), frames, interp }, None)?;
+                self.save()?;
+                Ok(text(format!("Done.\n\n{}", self.tracks_text(scene, s("item"))?)))
+            }
+            "define_outfit" => {
+                let (scene, item, name) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?, s("name").ok_or("name is required")?);
+                let outfit: Option<LookPatch> = match a.get("outfit") {
+                    None | Some(Value::Null) => None,
+                    Some(o) => Some(serde_json::from_value(o.clone()).map_err(|e| format!("bad outfit: {e}"))?),
+                };
+                let removing = outfit.is_none();
+                self.ed.apply(&Command::DefineOutfit { scene: scene.into(), item: item.into(), name: name.into(), outfit }, None)?;
+                self.save()?;
+                Ok(text(if removing { format!("Removed outfit {name:?}.") } else { format!("Outfit {name:?} defined on {item}. Switch to it with set_keys path=outfit value={name:?}.") }))
+            }
             "command_reference" => Ok(text(REFERENCE)),
             other => Err(format!("unknown tool {other}")),
         }
@@ -246,7 +408,7 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 "protocolVersion": msg["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "frameling", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Frameling makes animated cartoon videos. Start with get_project and get_library. Use script_to_video for a quick first cut, apply_commands for precise edits, say_line for dialogue, and render_frame to look at your work before export_video."
+                "instructions": "Frameling makes animated cartoon videos. Start with get_project and get_library. Use script_to_video for a quick first cut, apply_commands for precise edits, say_line for dialogue, set_keys to animate any property over time (movement, rotation, scale, bones, skin colour, outfits, expression, camera), and render_frame to look at your work before export_video."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),

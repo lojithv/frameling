@@ -136,6 +136,18 @@ impl Engine {
         frameling_render::render(&dl, width, height)
     }
 
+    /// `[x, y, zoom]` of a scene's camera at a local frame (scene move plus
+    /// camera keyframes), so the stage overlay maps coordinates like the renderer.
+    pub fn camera_at(&self, scene: usize, local: u32) -> Vec<f32> {
+        match self.editor.project.scenes.get(scene) {
+            Some(s) => {
+                let k = eval::camera_at(s, local);
+                vec![k.x, k.y, k.zoom]
+            }
+            None => vec![640.0, 360.0, 1.0],
+        }
+    }
+
     pub fn last_hits(&self) -> String {
         self.last_hits.clone()
     }

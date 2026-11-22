@@ -4,6 +4,7 @@
 //! This crate has no platform dependencies. It is compiled natively for the
 //! desktop app and CLI, and to WebAssembly for the browser editor.
 
+pub mod anim;
 pub mod audio;
 pub mod command;
 pub mod demo;
@@ -16,6 +17,7 @@ pub mod rig;
 pub mod stick;
 pub mod text;
 
+pub use anim::{Interp, Key, Track, Tracks};
 pub use command::{Command, Editor};
 pub use display::{DisplayList, Op, Paint, Path, Seg};
 pub use eval::{audio_events, evaluate, evaluate_scene, AudioEvent, ItemHit};
