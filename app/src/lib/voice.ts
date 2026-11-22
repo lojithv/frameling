@@ -20,7 +20,52 @@ export async function listVoices(refresh = false): Promise<Voice[]> {
 
 export const ttsAvailable = () => isDesktop;
 
+// ---------------------------------------------------------------- built-in voice licence
+// The Supertonic weights are OpenRAIL-M: its use restrictions have to be passed
+// on to, and accepted by, the people using them. Accepted once per machine.
+const TERMS_KEY = "frameling.supertonicTermsAccepted.v1";
+
+export function termsAccepted(): boolean {
+  try {
+    return localStorage.getItem(TERMS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function acceptTerms() {
+  try {
+    localStorage.setItem(TERMS_KEY, "1");
+  } catch {
+    /* private mode: ask again next time */
+  }
+}
+
+/** Licence summary and the path of the full licence file. */
+export async function voiceTerms(): Promise<{ text: string; licence: string | null }> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const [text, licence] = await invoke<[string, string | null]>("tts_terms");
+  return { text, licence };
+}
+
+/** Languages the built-in voices speak. */
+export const BUILT_IN_LANGS: [string, string][] = [
+  ["en", "English"], ["ar", "Arabic"], ["bg", "Bulgarian"], ["hr", "Croatian"], ["cs", "Czech"], ["da", "Danish"],
+  ["nl", "Dutch"], ["et", "Estonian"], ["fi", "Finnish"], ["fr", "French"], ["de", "German"], ["el", "Greek"],
+  ["hi", "Hindi"], ["hu", "Hungarian"], ["id", "Indonesian"], ["it", "Italian"], ["ja", "Japanese"], ["ko", "Korean"],
+  ["lv", "Latvian"], ["lt", "Lithuanian"], ["pl", "Polish"], ["pt", "Portuguese"], ["ro", "Romanian"], ["ru", "Russian"],
+  ["sk", "Slovak"], ["sl", "Slovenian"], ["es", "Spanish"], ["sv", "Swedish"], ["tr", "Turkish"], ["uk", "Ukrainian"],
+  ["vi", "Vietnamese"],
+];
+
+/** `supertonic:F1@de` -> { base: "supertonic:F1", lang: "de" }. */
+export function splitVoiceId(id: string): { base: string; lang: string | null } {
+  const at = id.indexOf("@");
+  return at < 0 ? { base: id, lang: null } : { base: id.slice(0, at), lang: id.slice(at + 1) };
+}
+
 async function synthBytes(text: string, voice: string, speed: number): Promise<ArrayBuffer> {
+  if (/^(supertonic|piper):/.test(voice) && !termsAccepted()) throw new Error("Accept the built-in voice terms first (Voice panel).");
   const { invoke } = await import("@tauri-apps/api/core");
   const b64 = await invoke<string>("tts_synthesize", { text, voice, speed });
   return fromB64(b64);

@@ -1,16 +1,21 @@
 //! Offline text-to-speech.
 //!
-//! Two engines, both run as separate processes (so their own licences stay
-//! separate from Frameling's):
-//!
-//! * **Piper** (neural, bundled): the `piper` executable plus `.onnx` voice
-//!   models shipped inside the app (see `scripts/fetch-tts.mjs`). Users can drop
-//!   more Piper voices into the voices folder.
+//! * **Supertonic 3** (neural, bundled): Supertone's multilingual ONNX model,
+//!   run in-process with ONNX Runtime. Ten voice styles, 31 languages. The
+//!   weights ship in the app's resources (see `app/scripts/fetch-tts.mjs`) and
+//!   are under the OpenRAIL-M licence, separate from Frameling's own.
 //! * **System voices** (fallback, zero download): `say` on macOS, SAPI on
-//!   Windows, eSpeak NG on Linux.
+//!   Windows, eSpeak NG on Linux. These run as separate processes.
 //!
 //! Every engine returns a WAV file, which the app imports like any other sound,
 //! so lip sync and export work the same for typed, recorded and uploaded lines.
+//!
+//! Voice ids stored in projects: `supertonic:F1` (English) or
+//! `supertonic:F1@de` (any of the 31 languages), and `system:<name>`.
+//! Older projects may name `piper:…` voices; those are re-voiced with a
+//! Supertonic voice picked from the old id, so each character keeps a distinct voice.
+
+pub mod supertonic;
 
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -20,36 +25,36 @@ use std::process::{Command, Stdio};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Voice {
-    /// Stable id stored in projects, e.g. `piper:en_US-ljspeech-high` or `piper:en_GB-vctk-medium#12`.
+    /// Stable id stored in projects, e.g. `supertonic:F1`, `supertonic:M2@fr` or `system:Microsoft Zira Desktop`.
     pub id: String,
     pub name: String,
-    /// BCP-47-ish language tag, e.g. `en-US`.
+    /// BCP-47-ish language tag, e.g. `en-US`. Supertonic voices list `en`; append `@xx` to the id for other languages.
     pub language: String,
-    /// "piper" or "system".
+    /// "supertonic" or "system".
     pub engine: String,
-    /// Short credit line shown in the UI (licence / dataset).
+    /// Short credit line shown in the UI (licence / source).
     pub credit: String,
 }
 
+/// Shown wherever the built-in voices are offered (UI, CLI, MCP).
+pub const SUPERTONIC_CREDIT: &str = "Supertonic 3 by Supertone, OpenRAIL-M licence";
+
+/// The part of the OpenRAIL-M licence users must agree to before using the
+/// built-in voices (paragraph 5 and Attachment A, summarised; the full text is
+/// `tts/supertonic/LICENSE`).
+pub const SUPERTONIC_TERMS: &str = "The built-in voices use the Supertonic 3 model by Supertone Inc., licensed under the \
+BigScience OpenRAIL-M licence. By using them you agree to its use restrictions (Attachment A), including: \
+do not impersonate a real person or create deepfakes without their consent; say clearly that the speech is \
+machine-generated wherever you publish it; do not use it to harm, harass, defame or discriminate against people, \
+to break the law, to spread false information meant to harm others, or to give medical advice. You are \
+responsible for what you make with it. Full licence: tts/supertonic/LICENSE in the app folder.";
+
 #[derive(Clone, Debug)]
 pub struct Tts {
-    /// Folder holding the `piper` executable (and its libs / espeak-ng-data).
-    pub piper_dir: Option<PathBuf>,
-    /// Folders scanned for Piper voices (`*.onnx` + `*.onnx.json`).
-    pub voice_dirs: Vec<PathBuf>,
-}
-
-/// Friendly names for speakers inside multi-speaker models, from
-/// `frameling-voices.json` next to the models:
-/// `{ "en_GB-vctk-medium": { "credit": "...", "speakers": { "12": "Ada", ... } } }`
-#[derive(Default, Deserialize)]
-struct Curated {
-    #[serde(default)]
-    credit: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    speakers: std::collections::BTreeMap<String, String>,
+    /// Folder holding the Supertonic model (`onnx/`, `voice_styles/`), if installed.
+    pub model_dir: Option<PathBuf>,
+    /// Denoising steps for Supertonic (quality vs speed).
+    pub steps: usize,
 }
 
 fn exe(name: &str) -> String {
@@ -100,74 +105,89 @@ fn read_and_remove(p: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+/// 16-bit PCM mono WAV, peak-limited so loud lines never clip.
+pub fn encode_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
+    let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    let gain = if peak > 0.98 { 0.98 / peak } else { 1.0 };
+    let data_len = (samples.len() * 2) as u32;
+    let mut w = Vec::with_capacity(44 + data_len as usize);
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + data_len).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    w.extend_from_slice(&1u16.to_le_bytes()); // mono
+    w.extend_from_slice(&sample_rate.to_le_bytes());
+    w.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+    w.extend_from_slice(&2u16.to_le_bytes());
+    w.extend_from_slice(&16u16.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&data_len.to_le_bytes());
+    for s in samples {
+        w.extend_from_slice(&(((s * gain).clamp(-1.0, 1.0) * 32767.0).round() as i16).to_le_bytes());
+    }
+    w
+}
+
+/// Supertonic pads each line with ~0.45 s of silence before and ~0.65 s after.
+/// Trim it (keeping a short breath) so a line starts when the character starts
+/// talking and back-to-back lines don't have a second of dead air between them.
+pub fn trim_silence(s: &[f32], sample_rate: u32) -> &[f32] {
+    let peak = s.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+    if peak <= 0.0 {
+        return s;
+    }
+    let th = peak * 0.02;
+    let (Some(a), Some(b)) = (s.iter().position(|x| x.abs() > th), s.iter().rposition(|x| x.abs() > th)) else { return s };
+    let sr = sample_rate as f32;
+    let a = a.saturating_sub((0.06 * sr) as usize);
+    let b = (b + (0.15 * sr) as usize).min(s.len() - 1);
+    &s[a..=b]
+}
+
+/// Split `supertonic:F1@de` into (`F1`, `de`).
+fn parse_supertonic(rest: &str) -> Result<(&str, &str), String> {
+    let (voice, lang) = rest.split_once('@').unwrap_or((rest, "en"));
+    let lang = lang.split(['-', '_']).next().unwrap_or("en");
+    if !supertonic::VOICES.iter().any(|(id, _)| *id == voice) {
+        return Err(format!("unknown voice supertonic:{rest}"));
+    }
+    Ok((voice, lang))
+}
+
+/// Pick a Supertonic voice for an old Piper id, stable per id.
+fn legacy_piper_voice(rest: &str) -> String {
+    let lang = rest.split(['-', '_']).next().unwrap_or("en");
+    let lang = if supertonic::LANGS.contains(&lang) { lang } else { "en" };
+    let h = rest.bytes().fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
+    let (id, _) = supertonic::VOICES[h as usize % supertonic::VOICES.len()];
+    if lang == "en" { id.to_string() } else { format!("{id}@{lang}") }
+}
+
 impl Tts {
-    /// Look for bundled Piper next to the app (`<base>/tts/piper`, `<base>/tts/voices`).
+    /// Look for the bundled model next to the app (`<base>/tts/supertonic`).
     pub fn with_bundle(base: &Path) -> Tts {
-        let piper_dir = base.join("tts").join("piper");
-        Tts {
-            piper_dir: piper_dir.join(exe("piper")).is_file().then_some(piper_dir),
-            voice_dirs: vec![base.join("tts").join("voices")],
-        }
+        let dir = base.join("tts").join("supertonic");
+        Tts { model_dir: supertonic::is_model_dir(&dir).then_some(dir), steps: supertonic::DEFAULT_STEPS }
     }
 
-    pub fn piper_exe(&self) -> Option<PathBuf> {
-        self.piper_dir.as_ref().map(|d| d.join(exe("piper"))).filter(|p| p.is_file()).or_else(|| which("piper"))
-    }
-
-    /// All voices available on this machine. Piper voices come first.
+    /// All voices available on this machine. Built-in voices come first.
     pub fn voices(&self) -> Vec<Voice> {
         let mut out = Vec::new();
-        if self.piper_exe().is_some() {
-            out.extend(self.piper_voices());
+        if let Some(dir) = &self.model_dir {
+            for (id, name) in supertonic::installed_voices(dir) {
+                let kind = if id.starts_with('F') { "female" } else { "male" };
+                out.push(Voice {
+                    id: format!("supertonic:{id}"),
+                    name: format!("{name} ({kind})"),
+                    language: "en".into(),
+                    engine: "supertonic".into(),
+                    credit: SUPERTONIC_CREDIT.into(),
+                });
+            }
         }
         out.extend(system_voices());
         out
-    }
-
-    fn piper_voices(&self) -> Vec<Voice> {
-        let mut out = Vec::new();
-        for dir in &self.voice_dirs {
-            let curated: std::collections::BTreeMap<String, Curated> = std::fs::read_to_string(dir.join("frameling-voices.json"))
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
-            let Ok(entries) = std::fs::read_dir(dir) else { continue };
-            let mut models: Vec<PathBuf> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "onnx"))
-                .collect();
-            models.sort();
-            for model in models {
-                let stem = model.file_stem().unwrap().to_string_lossy().to_string();
-                let Ok(cfg) = std::fs::read_to_string(model.with_extension("onnx.json")) else { continue };
-                let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&cfg) else { continue };
-                let lang = cfg["language"]["code"].as_str().unwrap_or("").replace('_', "-");
-                let cur = curated.get(&stem);
-                let credit = cur.map(|c| c.credit.clone()).unwrap_or_default();
-                let base_name = cur.and_then(|c| c.name.clone()).unwrap_or_else(|| pretty_model_name(&stem));
-                let speakers = cfg["num_speakers"].as_u64().unwrap_or(1);
-                if speakers <= 1 {
-                    out.push(Voice { id: format!("piper:{stem}"), name: base_name, language: lang, engine: "piper".into(), credit });
-                } else if let Some(c) = cur.filter(|c| !c.speakers.is_empty()) {
-                    for (sid, name) in &c.speakers {
-                        out.push(Voice { id: format!("piper:{stem}#{sid}"), name: name.clone(), language: lang.clone(), engine: "piper".into(), credit: credit.clone() });
-                    }
-                } else {
-                    for sid in 0..speakers.min(16) {
-                        out.push(Voice { id: format!("piper:{stem}#{sid}"), name: format!("{base_name} {}", sid + 1), language: lang.clone(), engine: "piper".into(), credit: credit.clone() });
-                    }
-                }
-            }
-        }
-        out
-    }
-
-    fn find_model(&self, stem: &str) -> Option<PathBuf> {
-        if stem.contains(['/', '\\']) || stem.contains("..") {
-            return None;
-        }
-        self.voice_dirs.iter().map(|d| d.join(format!("{stem}.onnx"))).find(|p| p.is_file())
     }
 
     /// Speak `text` with `voice_id` at `speed` (1.0 = normal). Returns WAV bytes.
@@ -182,47 +202,20 @@ impl Tts {
         let speed = speed.clamp(0.5, 2.0);
         let (engine, rest) = voice_id.split_once(':').ok_or("unknown voice")?;
         match engine {
-            "piper" => {
-                let (stem, speaker) = match rest.split_once('#') {
-                    Some((s, n)) => (s, Some(n.parse::<u32>().map_err(|_| "bad speaker id")?)),
-                    None => (rest, None),
-                };
-                let model = self.find_model(stem).ok_or_else(|| format!("voice {stem} is not installed"))?;
-                let piper = self.piper_exe().ok_or("Piper is not installed")?;
-                let out = tmp_path("wav");
-                let mut cmd = Command::new(&piper);
-                cmd.arg("--model").arg(&model).arg("--output_file").arg(&out).arg("--length_scale").arg(format!("{:.3}", 1.0 / speed));
-                if let Some(s) = speaker {
-                    cmd.arg("--speaker").arg(s.to_string());
-                }
-                if let Some(dir) = &self.piper_dir {
-                    let data = dir.join("espeak-ng-data");
-                    if data.is_dir() {
-                        cmd.arg("--espeak_data").arg(data);
-                    }
-                    cmd.current_dir(dir);
-                }
-                // One line of input = one utterance; keep the whole line together.
-                run(cmd, Some(&format!("{}\n", text.replace(['\r', '\n'], " "))))?;
-                read_and_remove(&out)
+            "supertonic" => {
+                let (voice, lang) = parse_supertonic(rest)?;
+                let dir = self.model_dir.as_ref().ok_or("the built-in voices are not installed (run `npm run fetch-tts`)")?;
+                let model = supertonic::shared(dir)?;
+                let mut m = model.lock().map_err(|_| "speech engine lock poisoned")?;
+                let samples = m.synthesize(text, lang, voice, speed, self.steps)?;
+                let sr = m.sample_rate();
+                Ok(encode_wav(trim_silence(&samples, sr), sr))
             }
+            "piper" if self.model_dir.is_some() => self.synthesize(text, &format!("supertonic:{}", legacy_piper_voice(rest)), speed),
             "system" => system_say(text, rest, speed),
-            _ => Err(format!("unknown voice engine {engine:?}")),
+            _ => Err(format!("voice {voice_id:?} is not available on this machine")),
         }
     }
-}
-
-fn pretty_model_name(stem: &str) -> String {
-    // en_US-ljspeech-high -> "Ljspeech (en_US)"
-    let mut parts = stem.split('-');
-    let lang = parts.next().unwrap_or("");
-    let name = parts.next().unwrap_or(stem);
-    let mut c = name.chars();
-    let name = match c.next() {
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        None => String::new(),
-    };
-    format!("{} ({lang})", name.replace('_', " "))
 }
 
 // ---------------------------------------------------------------- system voices
@@ -311,17 +304,57 @@ fn system_say(text: &str, voice: &str, speed: f32) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
 
+    fn bundled() -> Option<Tts> {
+        // FRAMELING_TTS points at a folder containing `tts/supertonic`.
+        let base = std::env::var_os("FRAMELING_TTS").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../app/src-tauri/resources"));
+        let t = Tts::with_bundle(&base);
+        t.model_dir.is_some().then_some(t)
+    }
+
     #[test]
-    fn rejects_path_tricks_in_voice_ids() {
-        let t = Tts { piper_dir: None, voice_dirs: vec![std::env::temp_dir()] };
-        assert!(t.find_model("../etc/passwd").is_none());
-        assert!(t.synthesize("hi", "piper:../x", 1.0).is_err());
+    fn voice_ids_parse() {
+        assert_eq!(parse_supertonic("F1").unwrap(), ("F1", "en"));
+        assert_eq!(parse_supertonic("M3@pt-BR").unwrap(), ("M3", "pt"));
+        assert!(parse_supertonic("../x").is_err());
+        assert!(parse_supertonic("F9").is_err());
+    }
+
+    #[test]
+    fn legacy_piper_ids_map_to_distinct_stable_voices() {
+        let a = legacy_piper_voice("en_GB-vctk-medium#12");
+        assert_eq!(a, legacy_piper_voice("en_GB-vctk-medium#12"));
+        assert!(parse_supertonic(&a).is_ok());
+        assert!(legacy_piper_voice("de_DE-thorsten-medium").ends_with("@de"));
     }
 
     #[test]
     fn empty_text_is_an_error() {
-        let t = Tts { piper_dir: None, voice_dirs: vec![] };
+        let t = Tts { model_dir: None, steps: 8 };
         assert!(t.synthesize("   ", "system:en", 1.0).is_err());
+    }
+
+    #[test]
+    fn missing_model_is_a_clear_error() {
+        let t = Tts { model_dir: None, steps: 8 };
+        assert!(t.synthesize("hi", "supertonic:F1", 1.0).unwrap_err().contains("fetch-tts"));
+    }
+
+    #[test]
+    fn trims_padding_but_keeps_a_breath() {
+        let mut s = vec![0.0f32; 1000];
+        s.extend(vec![0.5f32; 1000]);
+        s.extend(vec![0.0f32; 1000]);
+        let t = trim_silence(&s, 1000); // 1 kHz: 60 samples before, 150 after
+        assert_eq!(t.len(), 60 + 1000 + 150);
+    }
+
+    #[test]
+    fn wav_header_is_valid() {
+        let w = encode_wav(&[0.0, 0.5, -2.0], 44100);
+        assert_eq!(&w[..4], b"RIFF");
+        assert_eq!(w.len(), 44 + 6);
+        // Peak 2.0 is scaled down to 0.98, not clipped.
+        assert_eq!(i16::from_le_bytes([w[48], w[49]]), -32112);
     }
 
     #[test]
@@ -331,24 +364,30 @@ mod tests {
             eprintln!("no system voices on this machine; skipping");
             return;
         };
-        let t = Tts { piper_dir: None, voice_dirs: vec![] };
+        let t = Tts { model_dir: None, steps: 8 };
         let wav = t.synthesize("Hello from Frameling.", &v.id, 1.0).unwrap();
         assert_eq!(&wav[..4], b"RIFF");
     }
 
     #[test]
-    fn piper_voice_folder_is_scanned() {
-        let dir = std::env::temp_dir().join(format!("fl-voices-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("en_GB-test-medium.onnx"), b"x").unwrap();
-        std::fs::write(dir.join("en_GB-test-medium.onnx.json"), r#"{"language":{"code":"en_GB"},"num_speakers":3}"#).unwrap();
-        std::fs::write(dir.join("frameling-voices.json"), r#"{"en_GB-test-medium":{"credit":"CC BY 4.0","speakers":{"0":"Ada","2":"Ben"}}}"#).unwrap();
-        let t = Tts { piper_dir: None, voice_dirs: vec![dir.clone()] };
-        let v = t.piper_voices();
-        assert_eq!(v.len(), 2);
-        assert_eq!(v[1].id, "piper:en_GB-test-medium#2");
-        assert_eq!(v[1].name, "Ben");
-        assert_eq!(v[0].language, "en-GB");
-        std::fs::remove_dir_all(dir).unwrap();
+    fn supertonic_speaks_when_bundled() {
+        let Some(t) = bundled() else {
+            eprintln!("Supertonic model not downloaded; skipping");
+            return;
+        };
+        assert_eq!(t.voices().iter().filter(|v| v.engine == "supertonic").count(), 10);
+        let a = t.synthesize("Hello from Frameling. This is a test.", "supertonic:F1", 1.0).unwrap();
+        assert_eq!(&a[..4], b"RIFF");
+        let secs = (a.len() - 44) as f32 / 2.0 / 44100.0;
+        assert!((1.0..6.0).contains(&secs), "unexpected length {secs}s");
+        // Leading silence is trimmed to a short breath.
+        let lead = a[44..].chunks(2).take_while(|b| i16::from_le_bytes([b[0], b[1]]).abs() < 600).count();
+        assert!(lead < 44100 / 5, "{lead} samples of leading silence");
+        // Repeatable, and faster speech is shorter.
+        assert_eq!(a, t.synthesize("Hello from Frameling. This is a test.", "supertonic:F1", 1.0).unwrap());
+        let fast = t.synthesize("Hello from Frameling. This is a test.", "supertonic:F1", 1.5).unwrap();
+        assert!(fast.len() < a.len());
+        let de = t.synthesize("Guten Tag, wie geht es dir?", "supertonic:M2@de", 1.0).unwrap();
+        assert!(de.len() > 44 + 44100);
     }
 }

@@ -118,7 +118,7 @@ export type MediaSource =
   | { kind: "recording" }
   | { kind: "file" };
 
-export interface Voice { id: string; name: string; language: string; engine: "piper" | "system"; credit: string }
+export interface Voice { id: string; name: string; language: string; engine: "supertonic" | "system"; credit: string }
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface ItemHit { id: Id; bounds: Rect; visible: boolean }

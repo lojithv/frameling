@@ -45,19 +45,37 @@ pub fn find_ffmpeg() -> PathBuf {
     PathBuf::from(exe_name)
 }
 
+/// File extension for a media file handed to FFmpeg. The MIME type wins: a
+/// media *name* can be a line of dialogue ("Almost. The voices sound…"), and
+/// its "extension" is not a file type.
 fn ext_for(mime: &str, name: &str) -> String {
-    if let Some(e) = Path::new(name).extension().and_then(|e| e.to_str()) {
-        return e.to_ascii_lowercase();
-    }
-    match mime {
+    let from_mime = match mime {
         "audio/mpeg" => "mp3",
         "audio/wav" | "audio/x-wav" | "audio/wave" => "wav",
         "audio/ogg" => "ogg",
         "audio/webm" => "webm",
         "audio/mp4" | "audio/aac" => "m4a",
-        _ => "bin",
+        _ => "",
+    };
+    if !from_mime.is_empty() {
+        return from_mime.into();
     }
-    .into()
+    match Path::new(name).extension().and_then(|e| e.to_str()) {
+        Some(e) if (1..=5).contains(&e.len()) && e.chars().all(|c| c.is_ascii_alphanumeric()) => e.to_ascii_lowercase(),
+        _ => "bin".into(),
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::ext_for;
+
+    #[test]
+    fn dialogue_names_do_not_become_extensions() {
+        assert_eq!(ext_for("audio/wav", "Almost. The voices sound…"), "wav");
+        assert_eq!(ext_for("", "Almost. The voices sound…"), "bin");
+        assert_eq!(ext_for("", "take 3.FLAC"), "flac");
+    }
 }
 
 /// Export the whole project to a video file (MP4/H.264 + AAC, or by extension
@@ -116,7 +134,9 @@ pub fn export_video(
         for i in 0..events.len() {
             filter.push_str(&format!("[a{i}]"));
         }
-        filter.push_str(&format!("amix=inputs={}:normalize=0:duration=longest[aout]", events.len()));
+        // Stereo out: FFmpeg 9.1's AAC encoder can loop forever on a 192 kb/s mono
+        // stream (all voice lines are mono), which froze exports on Windows.
+        filter.push_str(&format!("amix=inputs={}:normalize=0:duration=longest,aformat=channel_layouts=stereo[aout]", events.len()));
         cmd.args(["-filter_complex", &filter, "-map", "0:v", "-map", "[aout]"]);
     }
     if webm {

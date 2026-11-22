@@ -3,7 +3,7 @@
   // line (built-in TTS), record one, or upload one. Lines go on the scene one
   // after another and the scene grows to fit.
   import { app, currentScene, run, secs, frames, toast, updateItem } from "../lib/store.svelte";
-  import { listVoices, previewVoice, sayLine, redoLine, startRecording, stopRecording, addRecordedLine, ttsAvailable } from "../lib/voice";
+  import { listVoices, previewVoice, sayLine, redoLine, startRecording, stopRecording, addRecordedLine, ttsAvailable, termsAccepted, acceptTerms, voiceTerms, splitVoiceId, BUILT_IN_LANGS } from "../lib/voice";
   import { importAudio, previewMedia, stopAudio } from "../lib/audio";
   import { placeLine } from "../lib/voice";
   import type { CharacterKind, Item, Voice } from "../lib/types";
@@ -27,17 +27,40 @@
   });
 
   const voiceId = $derived(ch.voice ?? voices[0]?.id ?? "");
-  const voiceName = (id: string) => voices.find((v) => v.id === id)?.name ?? id.replace(/^\w+:/, "");
+  // Built-in voices carry their language as a suffix: `supertonic:F1@de`.
+  const voiceBase = $derived(splitVoiceId(voiceId).base);
+  const voiceLang = $derived(splitVoiceId(voiceId).lang ?? "en");
+  const isBuiltIn = $derived(voiceBase.startsWith("supertonic:"));
+  const voiceName = (id: string) => {
+    const { base, lang } = splitVoiceId(id);
+    const name = voices.find((v) => v.id === base)?.name ?? base.replace(/^\w+:/, "");
+    return lang && lang !== "en" ? `${name} · ${lang.toUpperCase()}` : name;
+  };
+
+  // OpenRAIL-M terms for the built-in voices, accepted once.
+  let accepted = $state(termsAccepted());
+  let terms = $state<{ text: string; licence: string | null } | null>(null);
+  $effect(() => {
+    if (isBuiltIn && !accepted && !terms) voiceTerms().then((t) => (terms = t)).catch(() => {});
+  });
+
   const groups = $derived.by(() => {
     const g = new Map<string, Voice[]>();
     for (const v of voices) {
-      const key = v.engine === "piper" ? "Built-in voices" : "System voices";
+      const key = v.engine === "supertonic" ? "Built-in voices" : "System voices";
       if (!g.has(key)) g.set(key, []);
       g.get(key)!.push(v);
     }
     return [...g.entries()];
   });
 
+  /** Pick a voice from the list; a built-in voice keeps the character's language. */
+  function pickVoice(base: string) {
+    setVoice(base.startsWith("supertonic:") && voiceLang !== "en" ? `${base}@${voiceLang}` : base);
+  }
+  function setLang(lang: string) {
+    setVoice(lang === "en" ? voiceBase : `${voiceBase}@${lang}`);
+  }
   function setVoice(id: string) {
     const it = structuredClone($state.snapshot(item)) as Item;
     (it.kind as CharacterKind).voice = id;
@@ -127,15 +150,27 @@
       <p class="hint">No voices found. Run <code>npm run fetch-tts</code> before building, or install system voices.</p>
     {:else}
       <div class="voice-row">
-        <select value={voiceId} onchange={(e) => setVoice((e.target as HTMLSelectElement).value)} aria-label="Voice">
+        <select value={voiceBase} onchange={(e) => pickVoice((e.target as HTMLSelectElement).value)} aria-label="Voice">
           {#each groups as [label, list]}
             <optgroup {label}>
-              {#each list as v}<option value={v.id}>{v.name} · {v.language}</option>{/each}
+              {#each list as v}<option value={v.id}>{v.engine === "supertonic" ? v.name : `${v.name} · ${v.language}`}</option>{/each}
             </optgroup>
           {/each}
         </select>
-        <button title="Hear this voice" disabled={busy !== null} onclick={async () => { busy = "preview"; await previewVoice(voiceId, ch.voiceSpeed ?? 1, `Hi, I'm ${item.name}.`); busy = null; }}>{busy === "preview" ? "…" : "▶"}</button>
+        {#if isBuiltIn}
+          <select class="lang" value={voiceLang} onchange={(e) => setLang((e.target as HTMLSelectElement).value)} aria-label="Language" title="Language this character speaks">
+            {#each BUILT_IN_LANGS as [code, name]}<option value={code}>{name}</option>{/each}
+          </select>
+        {/if}
+        <button title="Hear this voice" aria-label="Hear this voice" disabled={busy !== null || (isBuiltIn && !accepted)} onclick={async () => { busy = "preview"; await previewVoice(voiceId, ch.voiceSpeed ?? 1, `Hi, I'm ${item.name}.`); busy = null; }}>{busy === "preview" ? "…" : "▶"}</button>
       </div>
+      {#if isBuiltIn && !accepted}
+        <div class="terms" role="region" aria-label="Built-in voice terms">
+          <p>{terms?.text ?? "The built-in voices come with usage terms."}</p>
+          {#if terms?.licence}<p class="dim">Full licence: <code>{terms.licence}</code></p>{/if}
+          <button class="primary wide" onclick={() => { acceptTerms(); accepted = true; }}>I agree, use the built-in voices</button>
+        </div>
+      {/if}
       <label class="field slider">
         <span>Speed</span>
         <input type="range" min="0.6" max="1.6" step="0.05" value={ch.voiceSpeed ?? 1} oninput={(e) => setSpeed(+(e.target as HTMLInputElement).value)} />
@@ -145,7 +180,7 @@
       {#if credit}<p class="credit">{credit}</p>{/if}
       <textarea rows="2" placeholder="What should {item.name} say?" bind:value={text}
         onkeydown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) say(); }}></textarea>
-      <button class="primary wide" disabled={!text.trim() || busy !== null} onclick={say}>{busy === "say" ? "Speaking…" : "＋ Add line"}</button>
+      <button class="primary wide" disabled={!text.trim() || busy !== null || (isBuiltIn && !accepted)} onclick={say}>{busy === "say" ? "Speaking…" : "＋ Add line"}</button>
     {/if}
   {:else}
     <p class="hint">Typed lines use the built-in voices in the desktop app. Here you can record or upload.</p>
@@ -193,6 +228,10 @@
   .credit { color: var(--muted); font-size: 11px; margin: -4px 0 8px; }
   .voice-row { display: flex; gap: 6px; margin-bottom: 8px; }
   .voice-row select { flex: 1; min-width: 0; }
+  .voice-row select.lang { flex: 0 0 96px; }
+  .terms { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 11.5px; line-height: 1.45; }
+  .terms p { margin: 0 0 8px; }
+  .terms code { word-break: break-all; }
   .field.slider { display: grid; grid-template-columns: 74px 1fr 52px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
   .field.slider output { text-align: right; color: var(--text); }
   textarea { width: 100%; resize: vertical; margin-bottom: 6px; }

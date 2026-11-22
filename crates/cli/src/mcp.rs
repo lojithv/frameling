@@ -29,7 +29,7 @@ fn tools() -> Value {
     json!([
         tool("get_project", "Outline of the current project: scenes (ids, backgrounds, lengths), items (ids, names, positions, actions, voices) and spoken lines with timings. detail='full' returns the project JSON without audio data.", obj(json!({ "detail": { "type": "string", "enum": ["outline", "full"] } }), &[])),
         tool("get_library", "Available props, backgrounds, character actions, expressions and look options.", obj(json!({}), &[])),
-        tool("list_voices", "Text-to-speech voices installed on this machine (ids to use in say_line or a character's voice).", obj(json!({}), &[])),
+        tool("list_voices", "Text-to-speech voices installed on this machine (ids to use in say_line or a character's voice). Built-in supertonic voices take an @<lang> suffix for other languages.", obj(json!({}), &[])),
         tool("apply_commands", "Apply editor commands as one undoable step. Call command_reference for the format. Example: [{\"op\":\"addItem\",\"scene\":\"scene-1\",\"item\":{\"id\":\"desk1\",\"x\":900,\"y\":640,\"kind\":{\"type\":\"prop\",\"prop\":\"desk\"}}}]", obj(json!({ "commands": { "type": "array", "items": { "type": "object" } } }), &["commands"])),
         tool("say_line", "Make a character speak: synthesises the text with a voice, lip-syncs the character, places the line after the previous one and lengthens the scene to fit.", obj(json!({
             "scene": { "type": "string", "description": "scene id" },
@@ -132,7 +132,16 @@ impl Server {
             }
             "list_voices" => {
                 let v = self.tts.voices();
-                Ok(text(if v.is_empty() { "No voices installed.".to_string() } else { serde_json::to_string_pretty(&v).unwrap() }))
+                let mut out = if v.is_empty() { "No voices installed.".to_string() } else { serde_json::to_string_pretty(&v).unwrap() };
+                if self.tts.model_dir.is_some() {
+                    out.push_str("
+
+supertonic voices speak 31 languages (en ko ja ar bg cs da de el es et fi fr hi hr hu id it lt lv nl pl pt ro ru sk sl sv tr uk vi): append @<lang> to the id, e.g. supertonic:M2@es. Inline <laugh>, <breath> and <sigh> tags work in lines.
+
+Licence terms the user has agreed to (pass them on, and label published audio as machine-generated): ");
+                    out.push_str(frameling_tts::SUPERTONIC_TERMS);
+                }
+                Ok(text(out))
             }
             "apply_commands" => {
                 let cmds: Vec<Command> = serde_json::from_value(a.get("commands").cloned().unwrap_or(json!([]))).map_err(|e| format!("bad commands: {e}"))?;

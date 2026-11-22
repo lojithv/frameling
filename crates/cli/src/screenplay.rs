@@ -111,9 +111,11 @@ pub fn build(src: &str, lib: &Library, tts: &Tts, opts: &Options) -> Result<(Pro
     // Prefer the built-in neural voices; otherwise the plainest system English voices.
     let voices: Vec<String> = {
         let all = tts.voices();
-        let piper: Vec<String> = all.iter().filter(|v| v.engine == "piper" && v.language.starts_with("en")).map(|v| v.id.clone()).collect();
-        if !piper.is_empty() {
-            piper
+        let mut built_in: Vec<String> = all.iter().filter(|v| v.engine == "supertonic").map(|v| v.id.clone()).collect();
+        // Alternate F1, M1, F2, M2… so a two-hander gets two clearly different voices.
+        built_in.sort_by_key(|id| (id.chars().last(), id.clone()));
+        if !built_in.is_empty() {
+            built_in
         } else {
             let mut en: Vec<&frameling_tts::Voice> = all.iter().filter(|v| v.language.starts_with("en")).collect();
             let rank = |l: &str| match l.to_lowercase().as_str() { "en-us" => 0, "en-gb" => 1, "en" => 2, "en-au" | "en-ca" => 3, _ => 9 };

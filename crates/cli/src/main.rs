@@ -115,8 +115,14 @@ fn run() -> Result<(), String> {
             println!("applied {} commands, wrote {out}", list.len());
         }
         Some("voices") => {
-            for v in tts_engine(&args).voices() {
+            let tts = tts_engine(&args);
+            for v in tts.voices() {
                 println!("{:<44} {:<8} {}  {}", v.id, v.language, v.name, v.credit);
+            }
+            if tts.model_dir.is_some() {
+                println!("
+Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr.");
+                println!("{}", frameling_tts::SUPERTONIC_TERMS);
             }
         }
         Some("say") => {

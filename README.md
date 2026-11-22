@@ -33,7 +33,7 @@ cargo install wasm-bindgen-cli --version 0.2.130
 cd app
 npm install
 npm run dev            # web version at http://localhost:5173
-npm run fetch-tts      # once: download the built-in voices (Piper + open voice models)
+npm run fetch-tts      # once: download the built-in voices (Supertonic 3, ~400 MB, OpenRAIL-M)
 npm run tauri dev      # desktop app (needs the Tauri prerequisites for your OS)
 npm run tauri build    # installers for your OS, voices included
 ```
@@ -68,7 +68,7 @@ crates/core     document model, commands + undo, asset packs, character rig, tim
 crates/render   display list -> pixels (tiny-skia); same code in WASM preview and native export
 crates/export   frame-by-frame export, frames piped to FFmpeg, audio placed by frame number
 crates/wasm     the engine as a WebAssembly module for the editor UI
-crates/tts      offline text-to-speech (bundled Piper voices, OS voices fallback)
+crates/tts      offline text-to-speech (bundled Supertonic 3 on ONNX Runtime, OS voices fallback)
 crates/cli      headless rendering, automation, screenplays and the MCP server
 app/            Svelte + TypeScript editor UI (shared by desktop and web)
 app/src-tauri   Tauri 2 desktop shell: native files and native export

@@ -301,7 +301,7 @@ pub struct CharacterItem {
     pub auto_walk: bool,
     /// Switch idle to the talk action while this character speaks.
     pub auto_talk: bool,
-    /// Default voice for new lines (e.g. `piper:en_US-ljspeech-high`, `system:Samantha`).
+    /// Default voice for new lines (e.g. `supertonic:F1`, `supertonic:M2@de`, `system:Samantha`).
     pub voice: Option<String>,
     /// Default speaking speed for new lines (1.0 = normal).
     pub voice_speed: f32,

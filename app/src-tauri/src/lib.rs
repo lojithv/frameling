@@ -53,8 +53,7 @@ async fn export_video(app: tauri::AppHandle, project: String, path: String, widt
     .map_err(|e| e.to_string())?
 }
 
-/// Speech engine: bundled Piper voices (app resources), voices the user added
-/// (app data folder), then the OS voices.
+/// Speech engine: the bundled Supertonic model (app resources), then the OS voices.
 fn tts(app: &tauri::AppHandle) -> frameling_tts::Tts {
     let mut bases = Vec::new();
     if let Ok(res) = app.path().resource_dir() {
@@ -62,21 +61,11 @@ fn tts(app: &tauri::AppHandle) -> frameling_tts::Tts {
     }
     // `npm run tauri dev`: resources are not copied, use the source folder.
     bases.push(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));
-    let mut t = bases
+    bases
         .iter()
         .map(|b| frameling_tts::Tts::with_bundle(b))
-        .find(|t| t.piper_dir.is_some())
-        .unwrap_or_else(|| frameling_tts::Tts::with_bundle(&bases[0]));
-    for b in &bases {
-        t.voice_dirs.push(b.join("tts").join("voices"));
-    }
-    if let Ok(data) = app.path().app_data_dir() {
-        let user = data.join("voices");
-        let _ = std::fs::create_dir_all(&user);
-        t.voice_dirs.push(user);
-    }
-    t.voice_dirs.dedup();
-    t
+        .find(|t| t.model_dir.is_some())
+        .unwrap_or_else(|| frameling_tts::Tts::with_bundle(&bases[0]))
 }
 
 #[tauri::command]
@@ -102,12 +91,12 @@ async fn tts_synthesize(app: tauri::AppHandle, text: String, voice: String, spee
     Ok(base64::engine::general_purpose::STANDARD.encode(wav))
 }
 
-/// Folder where users can drop extra Piper voices (`.onnx` + `.onnx.json`).
+/// Licence terms of the built-in voices, shown once for the user to accept,
+/// plus the path of the full licence text.
 #[tauri::command]
-fn voices_folder(app: tauri::AppHandle) -> Result<String, String> {
-    let d = app.path().app_data_dir().map_err(|e| e.to_string())?.join("voices");
-    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-    Ok(d.to_string_lossy().to_string())
+fn tts_terms(app: tauri::AppHandle) -> (String, Option<String>) {
+    let licence = tts(&app).model_dir.map(|d| d.join("LICENSE")).filter(|p| p.is_file()).map(|p| p.to_string_lossy().to_string());
+    (frameling_tts::SUPERTONIC_TERMS.to_string(), licence)
 }
 
 /// Modification time (ms) of a file, so the editor can pick up edits made by
@@ -129,7 +118,7 @@ pub fn run() {
             cancel_export,
             tts_voices,
             tts_synthesize,
-            voices_folder,
+            tts_terms,
             file_mtime
         ])
         .run(tauri::generate_context!())

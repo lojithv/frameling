@@ -38,5 +38,5 @@ real file paths and fast multi-threaded export with FFmpeg.
 
 - GPU renderer (Vello on wgpu) behind the same display list, for 4K and heavy scenes.
 - WASM plugins (Extism) that receive commands and can register effects and importers.
-- Phoneme-based lip sync (Rhubarb) and offline TTS (Piper) as plugins.
+- Phoneme-based lip sync (Rhubarb), using the durations Supertonic already predicts.
 - Zip project format (`.frameling` = zip of JSON + media) for large audio.

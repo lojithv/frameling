@@ -80,7 +80,7 @@ enter/exit (none|fade|pop|slideLeft|slideRight|slideUp), motion {x, y, start, en
 
 ```jsonc
 {"type":"character","action":"wave","expression":"happy","speed":1,"autoWalk":true,"autoTalk":true,
- "voice":"piper:en_US-ljspeech-medium","voiceSpeed":1,
+ "voice":"supertonic:F1","voiceSpeed":1,
  "look":{"skin":"#c68b62","hair":"#231a16","hairStyle":"short|spiky|long|bun|curly|bald",
          "top":"#f26b5b","bottom":"#2f3a56","shoes":"#2a221e","build":"slim|regular|broad",
          "accessory":"none|glasses|tie|cap|bow","accent":"#e84a5f"}}
