@@ -107,9 +107,55 @@ fn file_mtime(path: String) -> Result<u64, String> {
     Ok(m.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0))
 }
 
+/// Windows: the window only gets a small (title bar) icon, so the taskbar fell
+/// back to a blank icon. Give it the exe's own icon (resource 32512, embedded by
+/// tauri-build from icons/icon.ico) as the big icon too, at the taskbar's size.
+#[cfg(windows)]
+fn set_taskbar_icon(window: &tauri::WebviewWindow) {
+    use std::ffi::c_void;
+    #[link(name = "user32")]
+    extern "system" {
+        fn LoadImageW(inst: *mut c_void, name: *const u16, kind: u32, cx: i32, cy: i32, flags: u32) -> *mut c_void;
+        fn GetSystemMetrics(index: i32) -> i32;
+        fn SendMessageW(hwnd: *mut c_void, msg: u32, wparam: usize, lparam: isize) -> isize;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetModuleHandleW(name: *const u16) -> *mut c_void;
+    }
+    const IMAGE_ICON: u32 = 1;
+    const WM_SETICON: u32 = 0x0080;
+    const ICON_SMALL: usize = 0;
+    const ICON_BIG: usize = 1;
+    const SM_CXICON: i32 = 11;
+    const SM_CXSMICON: i32 = 49;
+    let Ok(hwnd) = window.hwnd() else { return };
+    unsafe {
+        let inst = GetModuleHandleW(std::ptr::null());
+        let id = 32512usize as *const u16; // MAKEINTRESOURCE(32512)
+        for (which, metric) in [(ICON_BIG, SM_CXICON), (ICON_SMALL, SM_CXSMICON)] {
+            let size = GetSystemMetrics(metric);
+            let icon = LoadImageW(inst, id, IMAGE_ICON, size, size, 0);
+            if !icon.is_null() {
+                SendMessageW(hwnd.0 as *mut c_void, WM_SETICON, which, icon as isize);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|_app| {
+            #[cfg(windows)]
+            {
+                use tauri::Manager;
+                for w in _app.webview_windows().values() {
+                    set_taskbar_icon(w);
+                }
+            }
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             read_text_file,
