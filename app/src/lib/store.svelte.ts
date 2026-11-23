@@ -6,6 +6,10 @@ import type { Catalog, Command, Item, ItemHit, Project, Scene } from "./types";
 
 let engine: Engine | null = null;
 
+// Declared before `app`, whose initialiser reads them.
+const RECENT_KEY = "frameling.recent";
+const RECENT_MAX = 10;
+
 export const app = $state({
   ready: false,
   project: null as Project | null,
@@ -31,7 +35,41 @@ export const app = $state({
   exporting: null as null | { done: number; total: number; label: string },
   /** Changes made at the playhead become keyframes (see editItem). */
   autoKey: readAutoKey(),
+  /** Desktop: project files opened or saved lately, newest first. */
+  recent: readRecent(),
 });
+
+export interface RecentProject {
+  path: string;
+  name: string;
+  /** Last opened or saved, ms since epoch. */
+  at: number;
+}
+
+function readRecent(): RecentProject[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((r) => typeof r?.path === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function writeRecent() {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(app.recent));
+  } catch {
+    /* private mode */
+  }
+}
+/** Put a file at the top of the recent list. */
+export function rememberRecent(path: string, name: string) {
+  app.recent = [{ path, name: name || "Untitled", at: Date.now() }, ...app.recent.filter((r) => r.path !== path)].slice(0, RECENT_MAX);
+  writeRecent();
+}
+export function forgetRecent(path?: string) {
+  app.recent = path ? app.recent.filter((r) => r.path !== path) : [];
+  writeRecent();
+}
 
 function readAutoKey(): boolean {
   try {
@@ -165,7 +203,8 @@ export function updateScene(scene: Scene, merge?: string) {
   run({ op: "updateScene", scene }, merge);
 }
 
-export function loadProject(json: string, path: string | null = null, keepView = false) {
+/** Returns false (after a toast) when the JSON is not a project. */
+export function loadProject(json: string, path: string | null = null, keepView = false): boolean {
   try {
     eng().load(json);
     if (!keepView) {
@@ -176,8 +215,10 @@ export function loadProject(json: string, path: string | null = null, keepView =
     app.filePath = path;
     eng().mark_saved();
     refresh();
+    return true;
   } catch (e) {
     toast(`Could not open project: ${(e as Error).message ?? e}`, "error");
+    return false;
   }
 }
 

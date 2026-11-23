@@ -2,7 +2,7 @@
 // browser. Desktop uses native dialogs, native files and the native (FFmpeg)
 // exporter; the web build uses downloads and the WebCodecs exporter.
 
-import { app, eng, loadProject, toast } from "./store.svelte";
+import { app, eng, loadProject, toast, rememberRecent, forgetRecent } from "./store.svelte";
 import { exportInBrowser } from "./webexport";
 
 export const isDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -35,10 +35,7 @@ export async function openProject() {
     const { invoke, dialog } = await tauri();
     const path = await dialog.open({ filters: FILTER, multiple: false });
     if (typeof path !== "string") return;
-    const json = await invoke<string>("read_text_file", { path });
-    loadProject(json, path);
-    app.fileMtime = await invoke<number>("file_mtime", { path });
-    toast("Project opened");
+    await openPath(path);
     return;
   }
   const input = document.createElement("input");
@@ -54,6 +51,24 @@ export async function openProject() {
   input.click();
 }
 
+/** Desktop: open a project file by path (File → Open… and Recent projects). */
+export async function openPath(path: string): Promise<boolean> {
+  const { invoke } = await tauri();
+  let json: string;
+  try {
+    json = await invoke<string>("read_text_file", { path });
+  } catch {
+    forgetRecent(path);
+    toast(`Can't find ${path.split(/[\\/]/).pop()}. It was moved or deleted, so it's off the recent list.`, "error");
+    return false;
+  }
+  if (!loadProject(json, path)) return false;
+  app.fileMtime = await invoke<number>("file_mtime", { path });
+  rememberRecent(path, app.project?.name ?? "");
+  toast("Project opened");
+  return true;
+}
+
 export async function saveProject(saveAs = false) {
   const json = eng().project_json();
   if (isDesktop) {
@@ -66,6 +81,7 @@ export async function saveProject(saveAs = false) {
     await invoke("write_text_file", { path, contents: json });
     app.filePath = path;
     app.fileMtime = await invoke<number>("file_mtime", { path });
+    rememberRecent(path, app.project?.name ?? "");
   } else {
     download(new Blob([json], { type: "application/json" }), `${safeName()}.frameling`);
   }
