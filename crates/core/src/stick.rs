@@ -45,11 +45,16 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
     };
 
     // ---- legs (not affected by lean) -------------------------------------
+    let hip_y = HIP_Y + pose.drop;
+    let mut contact: Vec<(f32, f32, f32)> = Vec::new();
     let mut legs = Vec::new();
+    let thigh = 47.0 * (1.0 - pose.fold.clamp(0.0, 0.9));
+    let shin = 46.0 * (1.0 - pose.kneel.clamp(0.0, 0.9));
     for (side, h, k) in [(-1.0f32, pose.lh, pose.lk), (1.0, pose.rh, pose.rk)] {
-        let start = (side * 3.0, HIP_Y);
+        let start = (side * 3.0, hip_y);
         // A slight natural stance so the two legs never draw as one line.
-        let (knee, foot) = bone(start, h + 6.0, k - 4.0, 47.0, 46.0, side);
+        let (knee, foot) = bone(start, h + 6.0, k - 4.0, thigh, shin, side);
+        contact.extend([(start.0, start.1, w), (knee.0, knee.1, w * 0.6), (foot.0, foot.1, w * 0.6)]);
         legs.push(Op::stroke(Path::polyline(&[start, knee, foot], false), ink, w));
         // A short foot pointing outwards, following the shin a little.
         let toe = (foot.0 + side * 13.0, foot.1 + 2.0);
@@ -106,9 +111,11 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
     upper.extend(worn_at(wear, Anchor::Neck, Layer::Front, neck_t));
 
     // Arms
+    let mut hands = Vec::new();
     for (side, s, e) in [(-1.0f32, pose.ls, pose.le), (1.0, pose.rs, pose.re)] {
         let start = (side * 2.0, SHOULDER_Y);
         let (elbow, hand) = bone(start, s, e, 44.0, 42.0, side);
+        hands.push((hand.0, hand.1, w));
         let anchor = if side > 0.0 { Anchor::HandR } else { Anchor::HandL };
         let hand_t = Affine::translate(hand.0, hand.1).then(&Affine::scale(0.85, 0.85));
         upper.extend(worn_at(wear, anchor, Layer::Back, hand_t));
@@ -128,10 +135,20 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
     head.extend(worn_at(wear, Anchor::Head, Layer::Front, Affine::scale(HEAD_K, HEAD_K)));
     upper.push(Op::group(head_t, 1.0, head));
 
-    let lean_t = Affine::translate(0.0, HIP_Y + pose.bob).then(&Affine::rotate_deg(pose.lean)).then(&Affine::translate(0.0, -HIP_Y));
+    let lean_t = Affine::translate(0.0, hip_y + pose.bob).then(&Affine::rotate_deg(pose.lean)).then(&Affine::translate(0.0, -HIP_Y));
+    let mut upper_pts = vec![(0.0, -150.0, w), (0.0, HEAD_Y, HEAD_R)];
+    upper_pts.extend(hands);
+    contact.extend(upper_pts.iter().map(|&(x, y, r)| {
+        let (x, y) = lean_t.apply(x, y);
+        (x, y, r)
+    }));
+    let tilt_t = Affine::translate(0.0, hip_y).then(&Affine::rotate_deg(pose.tilt)).then(&Affine::translate(0.0, -hip_y));
+    // A standing stick figure's lowest point: the feet, about 7 px above 0 plus the line width.
+    let standing = -7.0 + w * 0.6;
+    let rise = if pose.ground > 0.0 { crate::rig::ground_rise(pose, crate::rig::lowest(&contact, &tilt_t), standing) } else { pose.rise };
     let mut all = legs;
     all.push(Op::group(lean_t, 1.0, upper));
-    vec![Op::group(Affine::translate(0.0, -pose.rise), 1.0, all)]
+    vec![Op::group(Affine::translate(0.0, -rise).then(&tilt_t), 1.0, all)]
 }
 
 fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, ink: Color, w: f32, hide_hair: bool) {

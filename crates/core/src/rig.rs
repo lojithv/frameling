@@ -40,6 +40,28 @@ pub struct Pose {
     pub look: f32,
     /// Right hand makes a thumbs-up, 0..1 (drawn above 0.5).
     pub thumb: f32,
+    /// Lower the hips (px); the legs bend to stay where they are put.
+    pub drop: f32,
+    /// Foreshorten the thighs, 0..0.9 (thighs pointing at the camera when sitting).
+    pub fold: f32,
+    /// Foreshorten the shins, 0..0.9 (kneeling, shins pointing back).
+    pub kneel: f32,
+    /// Rotate the whole body around the hips, degrees clockwise (lying down).
+    pub tilt: f32,
+    /// 0..1: lift or lower the body so its lowest point rests on the ground
+    /// (sitting on the floor, kneeling, lying). Added to `rise`.
+    pub ground: f32,
+}
+
+/// Lowest point (y + radius) of circles placed by `t`: for the ground solver.
+pub(crate) fn lowest(points: &[(f32, f32, f32)], t: &Affine) -> f32 {
+    points.iter().map(|&(x, y, r)| t.apply(x, y).1 + r).fold(f32::MIN, f32::max)
+}
+
+/// The rise that puts the body on the ground, given its lowest point
+/// without any rise (0 = feet flat, as standing).
+pub(crate) fn ground_rise(pose: &Pose, bottom: f32, standing_bottom: f32) -> f32 {
+    pose.rise + pose.ground.clamp(0.0, 1.0) * (bottom - standing_bottom)
 }
 
 macro_rules! pose_lerp {
@@ -50,7 +72,7 @@ macro_rules! pose_lerp {
 
 impl Pose {
     pub fn lerp(&self, o: &Pose, t: f32) -> Pose {
-        pose_lerp!(self, o, t; rise, bob, lean, head, ls, le, rs, re, lh, lk, rh, rk, look, thumb)
+        pose_lerp!(self, o, t; rise, bob, lean, head, ls, le, rs, re, lh, lk, rh, rk, look, thumb, drop, fold, kneel, tilt, ground)
     }
 }
 
@@ -163,15 +185,21 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> V
         Build::Broad => 108.0,
     };
     let half = width / 2.0;
-    let hip_y = -100.0;
+    let hip_y = -100.0 + pose.drop;
     let hip_x = (half - 22.0).max(14.0);
+    // Circles (x, y, r) that can touch the ground, for the ground solver.
+    let mut contact: Vec<(f32, f32, f32)> = Vec::new();
 
     // ---- legs (not affected by lean) -------------------------------------
     let mut legs = Vec::new();
+    let thigh = THIGH * (1.0 - pose.fold.clamp(0.0, 0.9));
+    let shin = SHIN * (1.0 - pose.kneel.clamp(0.0, 0.9));
     for (side, h, k) in [(-1.0f32, pose.lh, pose.lk), (1.0, pose.rh, pose.rk)] {
         let start = (side * hip_x, hip_y);
-        let foot = limb(&mut legs, start, h, k, 46.0, 44.0, side, look.bottom, look.bottom, 25.0);
+        let foot = limb(&mut legs, start, h, k, thigh, shin, side, look.bottom, look.bottom, 25.0);
         legs.push(Op::fill(Path::ellipse(foot.0 + side * 7.0, foot.1 + 4.0, 18.0, 9.5), look.shoes));
+        let d = dir(h, side);
+        contact.extend([(start.0, start.1, 14.0), (start.0 + d.0 * thigh, start.1 + d.1 * thigh, 12.5), (foot.0 + side * 7.0, foot.1 + 4.0, 9.5)]);
     }
 
     // ---- upper body, rotated by lean around the hips -----------------------
@@ -226,8 +254,10 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> V
     // Arms
     let sh_y = top_y + 16.0;
     let sh_x = half - 9.0;
+    let mut hands = Vec::new();
     for (side, s, e) in [(-1.0f32, pose.ls, pose.le), (1.0, pose.rs, pose.re)] {
         let hand = limb(&mut upper, (side * sh_x, sh_y), s, e, 42.0, 40.0, side, look.top, look.skin, 21.0);
+        hands.push((hand.0, hand.1, 11.0));
         let anchor = if side > 0.0 { Anchor::HandR } else { Anchor::HandL };
         upper.extend(worn_at(wear, anchor, Layer::Back, Affine::translate(hand.0, hand.1)));
         upper.push(Op::fill(Path::circle(hand.0, hand.1, 11.0), look.skin));
@@ -246,17 +276,32 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> V
     head_ops.extend(worn_at(wear, Anchor::Head, Layer::Front, Affine::IDENTITY));
     upper.push(Op::group(head_t, 1.0, head_ops));
 
+    // The upper body is drawn around the standing hips (y -100); move it with
+    // the dropped hips, then lean it.
     let lean_t = Affine::translate(0.0, hip_y + pose.bob)
         .then(&Affine::rotate_deg(pose.lean))
-        .then(&Affine::translate(0.0, -hip_y));
+        .then(&Affine::translate(0.0, 100.0));
+    let mut upper_pts = vec![(0.0, -120.0, half), (0.0, -190.0, half), (head_c.0, head_c.1, 50.0)];
+    upper_pts.extend(hands);
+    contact.extend(upper_pts.iter().map(|&(x, y, r)| {
+        let (x, y) = lean_t.apply(x, y);
+        (x, y, r)
+    }));
 
-    out.push(Op::group(Affine::translate(0.0, -pose.rise), 1.0, {
+    let tilt_t = Affine::translate(0.0, hip_y).then(&Affine::rotate_deg(pose.tilt)).then(&Affine::translate(0.0, -hip_y));
+    let rise = if pose.ground > 0.0 { ground_rise(pose, lowest(&contact, &tilt_t), STANDING_BOTTOM) } else { pose.rise };
+    out.push(Op::group(Affine::translate(0.0, -rise).then(&tilt_t), 1.0, {
         let mut v = legs;
         v.push(Op::group(lean_t, 1.0, upper));
         v
     }));
     out
 }
+
+/// Cartoon leg lengths and the lowest point of a standing figure (shoe soles).
+pub const THIGH: f32 = 46.0;
+pub const SHIN: f32 = 44.0;
+const STANDING_BOTTOM: f32 = 3.5;
 
 fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) {
     let skin = look.skin;
@@ -543,4 +588,192 @@ pub(crate) fn wavy_mouth(cx: f32, cy: f32, half: f32) -> Path {
     let q = half / 2.0;
     p.move_to(cx - half, cy).quad_to(cx - q * 1.5, cy - 4.0, cx - q, cy).quad_to(cx - q * 0.5, cy + 4.0, cx, cy).quad_to(cx + q * 0.5, cy - 4.0, cx + q, cy).quad_to(cx + q * 1.5, cy + 4.0, cx + half, cy);
     p
+}
+
+// ---------------------------------------------------------------------------
+// Walk and run cycles
+// ---------------------------------------------------------------------------
+
+/// Distance the body travels in one full walk cycle (two steps), in
+/// character units at scale 1. Driving the cycle by distance (see
+/// `locomotion`) keeps the standing foot planted on the ground.
+pub const WALK_CYCLE: f32 = 68.0;
+pub const RUN_CYCLE: f32 = 112.0;
+
+/// Gait parameters.
+struct Gait {
+    /// One step, body travel in px.
+    step: f32,
+    /// Fraction of the cycle each foot is on the ground (> 0.5 walks, < 0.5 runs).
+    stance: f32,
+    lift: f32,
+    /// Hip drop at contact and down (on top of what the stride needs), then at passing and up (px).
+    drops: [f32; 4],
+    arm: f32,
+    elbow: f32,
+    lean: f32,
+    /// Peak airborne lift between steps (running).
+    flight: f32,
+}
+
+const WALK: Gait = Gait { step: WALK_CYCLE / 2.0, stance: 0.6, lift: 9.0, drops: [0.6, 3.2, 1.2, 0.0], arm: 16.0, elbow: 14.0, lean: 1.5, flight: 0.0 };
+const RUN: Gait = Gait { step: RUN_CYCLE / 2.0, stance: 0.38, lift: 24.0, drops: [4.0, 9.0, 5.0, 3.0], arm: 34.0, elbow: 76.0, lean: 7.0, flight: 8.0 };
+
+/// Two-bone IK in a leg's own space: (u outward, v down) from hip to foot.
+/// `bend` = +1 puts the knee toward +u. Returns (hip angle, knee angle).
+fn leg_ik(u: f32, v: f32, l1: f32, l2: f32, bend: f32) -> (f32, f32) {
+    let d = (u * u + v * v).sqrt().clamp(1.0, l1 + l2 - 0.01);
+    let theta = u.atan2(v);
+    let alpha = ((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d)).clamp(-1.0, 1.0).acos();
+    let a1 = theta + bend * alpha;
+    // Knee, then the shin's absolute angle to the foot.
+    let (ku, kv) = (a1.sin() * l1, a1.cos() * l1);
+    let s = (u - ku).atan2(v - kv);
+    (a1.to_degrees(), (s - a1).to_degrees())
+}
+
+/// Smooth curve through the four step keys (contact, down, passing, up).
+fn step_curve(keys: [f32; 4], phi: f32) -> f32 {
+    let x = phi.rem_euclid(1.0) * 4.0;
+    let i = x.floor() as usize % 4;
+    let t = x - x.floor();
+    let t = t * t * (3.0 - 2.0 * t);
+    keys[i] + (keys[(i + 1) % 4] - keys[i]) * t
+}
+
+/// A walk (or run) pose at `phase` (0..1 = one cycle of two steps). `fwd` is
+/// the walking direction in the character's own x (+1 or -1). Classic 2D
+/// breakdown: contact, down, passing, up for each step; the standing foot
+/// slides back at exactly the body's speed, so feet stay planted when the
+/// phase follows distance travelled.
+pub fn locomotion(phase: f32, run: bool, fwd: f32) -> Pose {
+    locomotion_stride(phase, run, fwd, 1.0)
+}
+
+/// `locomotion` with a longer stride for faster walks (`stride` 1..1.6): the
+/// steps get longer and the hips sink a little more to reach them.
+pub fn locomotion_stride(phase: f32, run: bool, fwd: f32, stride: f32) -> Pose {
+    let g = if run { &RUN } else { &WALK };
+    let k = stride.clamp(1.0, 1.6);
+    let fwd = if fwd < 0.0 { -1.0 } else { 1.0 };
+    let reach = THIGH + SHIN;
+    // How far the foot moves back (in the hip's frame) while it is down.
+    let span = g.step * k * 2.0 * g.stance;
+    let step_phase = (phase * 2.0).rem_euclid(1.0);
+    // The hips sink just enough to reach the longest step, then bounce:
+    // lowest just after contact (down), highest after passing (up).
+    let need = reach - (reach * reach - (span / 2.0).powi(2)).max(0.0).sqrt();
+    let drops = [need + g.drops[0], need + g.drops[1], g.drops[2], g.drops[3]];
+    let drop = step_curve(drops, step_phase);
+    let mut p = Pose { drop, lean: fwd * g.lean, ..Pose::default() };
+
+    // Legs: left foot leads at phase 0, right foot half a cycle later.
+    let mut foot_fwd = [0.0f32; 2];
+    for (i, side) in [-1.0f32, 1.0].into_iter().enumerate() {
+        let lp = (phase + i as f32 * 0.5).rem_euclid(1.0);
+        let (fx, lift) = if lp < g.stance {
+            (span / 2.0 - span * lp / g.stance, 0.0)
+        } else {
+            let q = (lp - g.stance) / (1.0 - g.stance);
+            let s = (1.0 - (std::f32::consts::PI * q).cos()) / 2.0;
+            (-span / 2.0 + span * s, g.lift * (std::f32::consts::PI * q).sin())
+        };
+        foot_fwd[i] = fx / (span / 2.0);
+        let u = side * fwd * fx;
+        let v = reach - drop - lift;
+        let (h, k) = leg_ik(u, v, THIGH, SHIN, side * fwd);
+        if side < 0.0 {
+            p.lh = h;
+            p.lk = k;
+        } else {
+            p.rh = h;
+            p.rk = k;
+        }
+    }
+
+    // Arms swing against the legs: the left arm comes forward with the right foot.
+    for (side, opposite) in [(-1.0f32, foot_fwd[1]), (1.0, foot_fwd[0])] {
+        let swing = g.arm * opposite;
+        let bend = g.elbow + if run { 0.0 } else { 10.0 * opposite.max(0.0) };
+        let (s, e) = (side * fwd * swing + if run { 0.0 } else { 4.0 }, side * fwd * bend);
+        if side < 0.0 {
+            p.ls = s;
+            p.le = e;
+        } else {
+            p.rs = s;
+            p.re = e;
+        }
+    }
+
+    // Running: both feet leave the ground at the end of each step.
+    if g.flight > 0.0 && g.stance < 0.5 {
+        let start = 2.0 * g.stance;
+        if step_phase >= start {
+            let q = (step_phase - start) / (1.0 - start);
+            p.rise = g.flight * (std::f32::consts::PI * q).sin();
+        }
+    }
+    // The head bobs a touch against the body and looks where it is going.
+    p.head = -fwd * 1.0 + step_curve([0.0, 1.2, 0.0, -0.8], step_phase);
+    p.look = fwd * 0.6;
+    p
+}
+
+#[cfg(test)]
+mod gait_tests {
+    use super::*;
+
+    /// Where a foot is in the character's own space for a pose.
+    fn foot(p: &Pose, side: f32) -> (f32, f32) {
+        let (h, k) = if side < 0.0 { (p.lh, p.lk) } else { (p.rh, p.rk) };
+        let d1 = dir(h, side);
+        let d2 = dir(h + k, side);
+        let hip = (0.0, -100.0 + p.drop);
+        (hip.0 + d1.0 * THIGH + d2.0 * SHIN, hip.1 + d1.1 * THIGH + d2.1 * SHIN - p.rise)
+    }
+
+    #[test]
+    fn walking_feet_stay_planted() {
+        // While a foot is down, its world position (body x + foot x) must not move.
+        let frames = 60;
+        for side in [-1.0f32, 1.0] {
+            let mut planted: Vec<(f32, f32)> = vec![];
+            for f in 0..frames {
+                let phase = f as f32 / frames as f32;
+                let body_x = phase * WALK_CYCLE;
+                let p = locomotion(phase, false, 1.0);
+                let (fx, fy) = foot(&p, side);
+                if fy > -10.5 {
+                    planted.push((body_x + fx, fy));
+                }
+            }
+            assert!(planted.len() > frames / 3, "foot {side} is down for a good part of the cycle");
+            // Group consecutive contacts; within one contact the x must hold still.
+            let xs: Vec<f32> = planted.iter().map(|p| p.0).collect();
+            let spread = |v: &[f32]| v.iter().cloned().fold(f32::MIN, f32::max) - v.iter().cloned().fold(f32::MAX, f32::min);
+            let mut run = vec![xs[0]];
+            for w in xs.windows(2) {
+                if (w[1] - w[0]).abs() > 20.0 {
+                    assert!(spread(&run) < 1.5, "foot {side} slides {} px", spread(&run));
+                    run.clear();
+                }
+                run.push(w[1]);
+            }
+            assert!(spread(&run) < 1.5, "foot {side} slides {} px", spread(&run));
+        }
+    }
+
+    #[test]
+    fn arms_swing_against_legs_and_body_bounces() {
+        let a = locomotion(0.0, false, 1.0);
+        let b = locomotion(0.5, false, 1.0);
+        assert!((a.ls - b.ls).abs() > 20.0 && (a.rs - b.rs).abs() > 20.0, "arms swing");
+        let drops: Vec<f32> = (0..8).map(|i| locomotion(i as f32 / 16.0, false, 1.0).drop).collect();
+        let (lo, hi) = (drops.iter().cloned().fold(f32::MAX, f32::min), drops.iter().cloned().fold(f32::MIN, f32::max));
+        assert!(hi - lo > 4.0, "the body rises and falls");
+        // Mirrored direction mirrors the legs.
+        let m = locomotion(0.2, false, -1.0);
+        let n = locomotion(0.2, false, 1.0);
+        assert!((m.lh + n.lh).abs() < 0.01 && (m.rk + n.rk).abs() < 0.01);
+    }
 }

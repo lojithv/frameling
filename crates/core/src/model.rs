@@ -31,6 +31,12 @@ pub struct Project {
     /// in so the file renders anywhere (built-in parts are not stored).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parts: BTreeMap<Id, crate::pack::PartDef>,
+    /// Poses saved in this project (on top of the pose library).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub poses: BTreeMap<Id, crate::pack::PoseDef>,
+    /// Animations made in this project (for example chained from poses).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub actions: BTreeMap<Id, crate::pack::ActionDef>,
 }
 
 impl Default for Project {
@@ -45,6 +51,8 @@ impl Default for Project {
             scenes: vec![Scene::new("s1", "Scene 1")],
             media: BTreeMap::new(),
             parts: BTreeMap::new(),
+            poses: BTreeMap::new(),
+            actions: BTreeMap::new(),
         }
     }
 }
@@ -333,6 +341,9 @@ pub struct CharacterItem {
     /// Named costumes that the `outfit` track can switch to.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub outfits: BTreeMap<String, LookPatch>,
+    /// Poses held over the animation, with blends in and out.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub poses: Vec<crate::poses::PoseStrip>,
 }
 
 impl Default for CharacterItem {
@@ -347,6 +358,7 @@ impl Default for CharacterItem {
             voice: None,
             voice_speed: 1.0,
             outfits: BTreeMap::new(),
+            poses: Vec::new(),
         }
     }
 }

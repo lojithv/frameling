@@ -2,6 +2,7 @@
   import { app, currentScene, selectedPosed, editItem, keyFrames, setAutoKey, updateScene, endGesture, run, secs, frames, fmtTime } from "../lib/store.svelte";
   import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
+  import PosePanel from "./PosePanel.svelte";
   import type { AudioClip, CharacterKind, Effect, Item, PropKind, Scene, TextKind, TransitionKind } from "../lib/types";
 
   const scene = $derived(currentScene());
@@ -184,11 +185,15 @@
           {#each app.catalog?.actions ?? [] as a}
             <button class:on={ch.action === a.id} onclick={() => editKind<CharacterKind>((k) => (k.action = a.id))}>{a.name}</button>
           {/each}
+          {#each Object.values(app.project?.actions ?? {}) as a (a.id)}
+            <button class="made" class:on={ch.action === a.id} title="Made from poses in this project" onclick={() => editKind<CharacterKind>((k) => (k.action = a.id))}>★ {a.name}</button>
+          {/each}
         </div>
         {@render slider("Speed", ch.speed, 0.25, 2.5, 0.05, "speed", (v) => editKind<CharacterKind>((k) => (k.speed = v), "speed"), (v) => `${v.toFixed(2)}×`)}
         <label class="check"><input type="checkbox" checked={ch.autoWalk} onchange={() => editKind<CharacterKind>((k) => (k.autoWalk = !k.autoWalk))} /> Walk while moving</label>
         <label class="check"><input type="checkbox" checked={ch.autoTalk} onchange={() => editKind<CharacterKind>((k) => (k.autoTalk = !k.autoTalk))} /> Gesture while talking</label>
       </section>
+      <PosePanel {item} />
       <section>
         <h3>Expression</h3>
         <div class="expr">
@@ -700,5 +705,8 @@
   .danger:hover {
     border-color: #e84a5f;
     color: #ff8a98;
+  }
+  .chips .made {
+    border-style: dashed;
   }
 </style>

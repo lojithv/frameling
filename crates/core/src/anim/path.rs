@@ -42,6 +42,11 @@ pub enum Bone {
     Rk,
     Look,
     Thumb,
+    Drop,
+    Fold,
+    Kneel,
+    Tilt,
+    Ground,
 }
 
 /// (canonical path, short alias, channel, what it does).
@@ -60,6 +65,11 @@ pub const BONES: &[(&str, &str, Bone, &str)] = &[
     ("bone.shin_r.rot", "bone.rk", Bone::Rk, "screen-right knee, degrees"),
     ("bone.eyes.x", "bone.look", Bone::Look, "eye direction, -1 (left) to 1 (right)"),
     ("bone.hand_r.thumb", "bone.thumb", Bone::Thumb, "right-hand thumbs-up, 0 to 1"),
+    ("bone.hips.drop", "bone.drop", Bone::Drop, "lower the hips, px; the legs bend (crouch, sit)"),
+    ("bone.thigh.fold", "bone.fold", Bone::Fold, "foreshorten the thighs 0 to 0.9 (sitting, thighs toward the camera)"),
+    ("bone.shin.fold", "bone.kneel", Bone::Kneel, "foreshorten the shins 0 to 0.9 (kneeling, shins pointing back)"),
+    ("bone.root.tilt", "bone.tilt", Bone::Tilt, "rotate the whole body around the hips, degrees (lying down)"),
+    ("bone.root.ground", "bone.ground", Bone::Ground, "0 to 1: rest the lowest point of the body on the ground"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

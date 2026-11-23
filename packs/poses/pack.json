@@ -1,0 +1,717 @@
+{
+ "id": "poses",
+ "name": "Pose library",
+ "version": "1",
+ "license": "CC0-1.0",
+ "poses": [
+  {
+   "id": "stand",
+   "name": "Stand",
+   "category": "Standing",
+   "tags": [
+    "neutral",
+    "idle",
+    "default",
+    "straight"
+   ],
+   "pose": {
+    "ls": 6,
+    "le": 6,
+    "rs": 6,
+    "re": 6
+   }
+  },
+  {
+   "id": "relaxed",
+   "name": "Relaxed",
+   "category": "Standing",
+   "tags": [
+    "casual",
+    "weight",
+    "shift",
+    "easy"
+   ],
+   "pose": {
+    "ls": 4,
+    "le": 4,
+    "rs": 12,
+    "re": 20,
+    "head": 3,
+    "lean": -1.5,
+    "lh": 4,
+    "rk": 6
+   }
+  },
+  {
+   "id": "hands-on-hips",
+   "name": "Hands on hips",
+   "category": "Standing",
+   "tags": [
+    "confident",
+    "bossy",
+    "impatient"
+   ],
+   "pose": {
+    "ls": 48,
+    "le": -72,
+    "rs": 48,
+    "re": -72,
+    "lh": 6,
+    "rh": 6
+   }
+  },
+  {
+   "id": "arms-crossed",
+   "name": "Arms crossed",
+   "category": "Standing",
+   "tags": [
+    "stern",
+    "waiting",
+    "annoyed",
+    "closed"
+   ],
+   "pose": {
+    "lh": 4,
+    "rh": 4,
+    "ls": -32,
+    "le": -104,
+    "rs": -40,
+    "re": -96
+   }
+  },
+  {
+   "id": "fists",
+   "name": "Fists clenched",
+   "category": "Standing",
+   "tags": [
+    "angry",
+    "furious",
+    "ready",
+    "fight"
+   ],
+   "pose": {
+    "ls": 16,
+    "le": 34,
+    "rs": 16,
+    "re": 34,
+    "bob": 2,
+    "head": 3,
+    "lh": 9,
+    "rh": 9
+   }
+  },
+  {
+   "id": "shrug",
+   "name": "Shrug",
+   "category": "Standing",
+   "tags": [
+    "dunno",
+    "unsure",
+    "whatever"
+   ],
+   "pose": {
+    "ls": 38,
+    "le": 92,
+    "rs": 38,
+    "re": 92,
+    "bob": -4,
+    "head": -6
+   }
+  },
+  {
+   "id": "thinking",
+   "name": "Thinking",
+   "category": "Standing",
+   "tags": [
+    "hand",
+    "on",
+    "chin",
+    "ponder",
+    "idea"
+   ],
+   "pose": {
+    "ls": -38,
+    "le": -58,
+    "rs": -64.5,
+    "re": 213.0,
+    "head": 6,
+    "look": 0.6
+   }
+  },
+  {
+   "id": "facepalm",
+   "name": "Facepalm",
+   "category": "Standing",
+   "tags": [
+    "embarrassed",
+    "oops",
+    "frustrated"
+   ],
+   "pose": {
+    "ls": 4,
+    "le": 6,
+    "rs": 131.7,
+    "re": -270.4,
+    "head": 10,
+    "bob": 3,
+    "look": -0.3
+   }
+  },
+  {
+   "id": "scared",
+   "name": "Scared",
+   "category": "Standing",
+   "tags": [
+    "afraid",
+    "fear",
+    "cower",
+    "shock"
+   ],
+   "pose": {
+    "ls": 62,
+    "le": -112,
+    "rs": 62,
+    "re": -112,
+    "head": -4,
+    "drop": 8,
+    "lh": 29.8,
+    "lk": -46.8,
+    "rh": 29.8,
+    "rk": -46.8
+   }
+  },
+  {
+   "id": "tiptoe",
+   "name": "Tiptoe",
+   "category": "Standing",
+   "tags": [
+    "sneak",
+    "quiet",
+    "careful"
+   ],
+   "pose": {
+    "ls": 32,
+    "le": 44,
+    "rs": 32,
+    "re": 44,
+    "rise": 8,
+    "head": -4,
+    "look": 0.8
+   }
+  },
+  {
+   "id": "arms-out",
+   "name": "Arms out",
+   "category": "Standing",
+   "tags": [
+    "welcome",
+    "open",
+    "hug",
+    "ta-da"
+   ],
+   "pose": {
+    "ls": 82,
+    "le": 4,
+    "rs": 82,
+    "re": 4,
+    "head": -2
+   }
+  },
+  {
+   "id": "hands-up",
+   "name": "Hands up",
+   "category": "Standing",
+   "tags": [
+    "surrender",
+    "stop",
+    "don't",
+    "shoot"
+   ],
+   "pose": {
+    "ls": 118,
+    "le": -68,
+    "rs": 118,
+    "re": -68,
+    "head": -3
+   }
+  },
+  {
+   "id": "point",
+   "name": "Point",
+   "category": "Gestures",
+   "tags": [
+    "show",
+    "that",
+    "there",
+    "direct"
+   ],
+   "pose": {
+    "ls": 8,
+    "le": 6,
+    "rs": 92,
+    "re": -4,
+    "head": 5,
+    "look": 1
+   }
+  },
+  {
+   "id": "wave",
+   "name": "Wave",
+   "category": "Gestures",
+   "tags": [
+    "hello",
+    "hi",
+    "bye",
+    "greet"
+   ],
+   "pose": {
+    "ls": 8,
+    "le": 6,
+    "rs": 140,
+    "re": 20,
+    "head": 4
+   }
+  },
+  {
+   "id": "talk",
+   "name": "Talk, one hand",
+   "category": "Gestures",
+   "tags": [
+    "explain",
+    "conversation",
+    "speak"
+   ],
+   "pose": {
+    "ls": 8,
+    "le": 6,
+    "rs": 34,
+    "re": 72,
+    "head": 3,
+    "bob": 1
+   }
+  },
+  {
+   "id": "talk-both",
+   "name": "Talk, both hands",
+   "category": "Gestures",
+   "tags": [
+    "explain",
+    "present",
+    "discuss"
+   ],
+   "pose": {
+    "ls": 28,
+    "le": 56,
+    "rs": 32,
+    "re": 60,
+    "head": -2
+   }
+  },
+  {
+   "id": "thumbs-up",
+   "name": "Thumbs up",
+   "category": "Gestures",
+   "tags": [
+    "good",
+    "ok",
+    "approve",
+    "like"
+   ],
+   "pose": {
+    "ls": 8,
+    "le": 6,
+    "rs": 32,
+    "re": 118,
+    "thumb": 1,
+    "head": 4
+   }
+  },
+  {
+   "id": "phone-call",
+   "name": "Phone call",
+   "category": "Gestures",
+   "tags": [
+    "phone",
+    "call",
+    "ear",
+    "talk"
+   ],
+   "pose": {
+    "ls": 6,
+    "le": 6,
+    "rs": 131.1,
+    "re": -286.5,
+    "head": 7,
+    "look": -0.3
+   }
+  },
+  {
+   "id": "cheer",
+   "name": "Cheer",
+   "category": "Gestures",
+   "tags": [
+    "celebrate",
+    "win",
+    "yay",
+    "hooray"
+   ],
+   "pose": {
+    "ls": 155,
+    "le": 12,
+    "rs": 155,
+    "re": 12,
+    "head": -3
+   }
+  },
+  {
+   "id": "clap",
+   "name": "Clap",
+   "category": "Gestures",
+   "tags": [
+    "applause",
+    "clapping",
+    "well",
+    "done"
+   ],
+   "pose": {
+    "ls": -18,
+    "le": -62,
+    "rs": -18,
+    "re": -62,
+    "head": 2
+   }
+  },
+  {
+   "id": "salute",
+   "name": "Salute",
+   "category": "Gestures",
+   "tags": [
+    "respect",
+    "military",
+    "yes",
+    "sir"
+   ],
+   "pose": {
+    "ls": 6,
+    "le": 6,
+    "rs": -189.3,
+    "re": 29.4,
+    "head": -2
+   }
+  },
+  {
+   "id": "presenting",
+   "name": "Presenting",
+   "category": "Gestures",
+   "tags": [
+    "show",
+    "introduce",
+    "this",
+    "is"
+   ],
+   "pose": {
+    "ls": 8,
+    "le": 6,
+    "rs": 58,
+    "re": -18,
+    "head": 4,
+    "look": 1
+   }
+  },
+  {
+   "id": "sit-chair",
+   "name": "Sit on a chair",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "sit",
+    "seated",
+    "chair",
+    "desk",
+    "office"
+   ],
+   "pose": {
+    "fold": 0.75,
+    "lh": 8,
+    "lk": -8,
+    "rh": 8,
+    "rk": -8,
+    "drop": 34.6,
+    "ground": 1,
+    "ls": -4,
+    "le": -38,
+    "rs": -4,
+    "re": -38
+   }
+  },
+  {
+   "id": "sit-crossed",
+   "name": "Sit, arms crossed",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "sit",
+    "seated",
+    "waiting",
+    "stern"
+   ],
+   "pose": {
+    "fold": 0.75,
+    "lh": 8,
+    "lk": -8,
+    "rh": 8,
+    "rk": -8,
+    "drop": 34.6,
+    "ground": 1,
+    "ls": -32,
+    "le": -104,
+    "rs": -40,
+    "re": -96
+   }
+  },
+  {
+   "id": "sit-phone",
+   "name": "Sit on the phone",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "sit",
+    "seated",
+    "phone",
+    "call"
+   ],
+   "pose": {
+    "fold": 0.75,
+    "lh": 8,
+    "lk": -8,
+    "rh": 8,
+    "rk": -8,
+    "drop": 34.6,
+    "ground": 1,
+    "ls": -4,
+    "le": -38,
+    "rs": 131.1,
+    "re": -286.5,
+    "head": 7,
+    "look": -0.3
+   }
+  },
+  {
+   "id": "sit-floor",
+   "name": "Sit on the floor",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "cross-legged",
+    "floor",
+    "meditate",
+    "relax"
+   ],
+   "pose": {
+    "lh": 78,
+    "lk": -152,
+    "rh": 78,
+    "rk": -152,
+    "fold": 0.2,
+    "ls": 32,
+    "le": 28,
+    "rs": 32,
+    "re": 28,
+    "ground": 1
+   }
+  },
+  {
+   "id": "kneel",
+   "name": "Kneel",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "kneeling",
+    "pray",
+    "floor"
+   ],
+   "pose": {
+    "lh": 4,
+    "lk": -4,
+    "rh": 4,
+    "rk": -4,
+    "kneel": 0.88,
+    "ground": 1,
+    "ls": 6,
+    "le": 10,
+    "rs": 6,
+    "re": 10
+   }
+  },
+  {
+   "id": "kneel-crossed",
+   "name": "Kneel, arms crossed",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "kneeling",
+    "waiting"
+   ],
+   "pose": {
+    "lh": 4,
+    "lk": -4,
+    "rh": 4,
+    "rk": -4,
+    "kneel": 0.88,
+    "ground": 1,
+    "ls": -32,
+    "le": -104,
+    "rs": -40,
+    "re": -96
+   }
+  },
+  {
+   "id": "kneel-cheer",
+   "name": "Kneel and cheer",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "kneeling",
+    "celebrate",
+    "win"
+   ],
+   "pose": {
+    "lh": 4,
+    "lk": -4,
+    "rh": 4,
+    "rk": -4,
+    "kneel": 0.88,
+    "ground": 1,
+    "ls": 155,
+    "le": 12,
+    "rs": 155,
+    "re": 12,
+    "head": -3
+   }
+  },
+  {
+   "id": "crouch",
+   "name": "Crouch",
+   "category": "Sitting and kneeling",
+   "tags": [
+    "squat",
+    "hide",
+    "low",
+    "duck"
+   ],
+   "pose": {
+    "ls": -14,
+    "le": -44,
+    "rs": -14,
+    "re": -44,
+    "ground": 1,
+    "head": 4,
+    "drop": 44,
+    "lh": 66.5,
+    "lk": -117.5,
+    "rh": 66.5,
+    "rk": -117.5
+   }
+  },
+  {
+   "id": "lie-back",
+   "name": "Lie on the back",
+   "category": "Lying",
+   "tags": [
+    "sleep",
+    "rest",
+    "floor",
+    "lying",
+    "down"
+   ],
+   "pose": {
+    "tilt": -90,
+    "ground": 1,
+    "ls": 4,
+    "le": 4,
+    "rs": 4,
+    "re": 4
+   }
+  },
+  {
+   "id": "lie-side",
+   "name": "Lie on the side",
+   "category": "Lying",
+   "tags": [
+    "sleep",
+    "nap",
+    "curled",
+    "lying"
+   ],
+   "pose": {
+    "tilt": -90,
+    "ground": 1,
+    "lh": 22,
+    "lk": 46,
+    "rh": 18,
+    "rk": 40,
+    "ls": 118,
+    "le": 40,
+    "rs": -10,
+    "re": -30
+   }
+  },
+  {
+   "id": "lie-front",
+   "name": "Lie on the front",
+   "category": "Lying",
+   "tags": [
+    "fly",
+    "superman",
+    "crawl",
+    "lying"
+   ],
+   "pose": {
+    "tilt": 90,
+    "ground": 1,
+    "ls": 160,
+    "le": 0,
+    "rs": 160,
+    "re": 0
+   }
+  },
+  {
+   "id": "jump-crouch",
+   "name": "Jump crouch",
+   "category": "Motion keys",
+   "tags": [
+    "jump",
+    "prepare",
+    "spring",
+    "wind-up"
+   ],
+   "pose": {
+    "ls": -28,
+    "le": 24,
+    "rs": -28,
+    "re": 24,
+    "head": 4,
+    "drop": 26,
+    "lh": 48.5,
+    "lk": -88.9,
+    "rh": 48.5,
+    "rk": -88.9
+   }
+  },
+  {
+   "id": "jump-peak",
+   "name": "Jump peak",
+   "category": "Motion keys",
+   "tags": [
+    "jump",
+    "air",
+    "leap"
+   ],
+   "pose": {
+    "rise": 60,
+    "ls": 150,
+    "le": 10,
+    "rs": 150,
+    "re": 10,
+    "lh": 10,
+    "lk": -10,
+    "rh": 10,
+    "rk": -10,
+    "head": -3
+   }
+  }
+ ]
+}

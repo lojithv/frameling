@@ -362,6 +362,18 @@
               {/if}
               <span class="edge r" onpointerdown={(e) => dragBar(e, it, "end")} role="presentation"></span>
             </div>
+            {#if it.kind.type === "character"}
+              {#each it.kind.poses ?? [] as s, si (si)}
+                <span
+                  class="pstrip"
+                  style:left={pct(s.start)}
+                  style:width={pct(Math.max(1, s.end - s.start))}
+                  style:--bi="{(s.blendIn / Math.max(1, s.end - s.start)) * 100}%"
+                  style:--bo="{(s.blendOut / Math.max(1, s.end - s.start)) * 100}%"
+                  title="Pose: {s.pose} {fmtTime(s.start)}–{fmtTime(s.end)}{s.mask !== 'full' ? ` (${s.mask})` : ''}"
+                >{s.pose}</span>
+              {/each}
+            {/if}
             {#each keyFrames(it) as f (f)}
               <button
                 class="kf"
@@ -389,6 +401,21 @@
 </section>
 
 <style>
+  .pstrip {
+    position: absolute;
+    top: 15px;
+    height: 11px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, transparent, #c58cff var(--bi), #c58cff calc(100% - var(--bo)), transparent);
+    color: #1c1030;
+    font-size: 8.5px;
+    line-height: 11px;
+    padding: 0 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+  }
   .kf {
     position: absolute;
     top: 50%;

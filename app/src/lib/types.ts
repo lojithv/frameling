@@ -23,6 +23,10 @@ export interface Project {
   media: Record<Id, Media>;
   /** Copies of pack parts the project's characters wear. */
   parts?: Record<Id, unknown>;
+  /** Poses saved in this project. */
+  poses?: Record<Id, { id: string; name: string; category: string; tags: string[]; pose: Record<string, number> }>;
+  /** Animations made in this project (chained from poses). */
+  actions?: Record<Id, { id: string; name: string; duration: number; loop: boolean; keys: unknown[] }>;
 }
 
 export interface Scene {
@@ -105,7 +109,22 @@ export interface CharacterKind {
   voiceSpeed: number;
   /** Named costumes the `outfit` track can switch to. */
   outfits?: Record<string, LookPatch>;
+  /** Poses held over the animation, with blends in and out. */
+  poses?: PoseStrip[];
 }
+
+export type PoseMask = "full" | "upper" | "lower" | "armL" | "armR" | "head";
+export interface PoseStrip {
+  pose: string;
+  start: number;
+  end: number;
+  blendIn: number;
+  blendOut: number;
+  mask: PoseMask;
+  mirror: boolean;
+  breathe: boolean;
+}
+export interface PoseInfo { id: string; name: string; category: string; tags: string[]; pack?: string }
 export interface PropKind { type: "prop"; prop: string; colors: string[] }
 export interface TextKind {
   type: "text";
@@ -178,6 +197,7 @@ export interface Catalog {
   backgrounds: CatalogEntry[];
   actions: { id: string; name: string; loop: boolean; duration: number }[];
   packs: { id: string; name: string }[];
+  poses: PoseInfo[];
 }
 
 export type Command =
@@ -197,6 +217,8 @@ export type Command =
   | { op: "removeAudio"; scene: Id; id: Id }
   | { op: "addLine"; scene: Id; clipId: Id; media: Media; speaker: Id | null; start: number | null }
   | { op: "addParts"; parts: unknown[] }
+  | { op: "addPose"; pose: { id: string; name: string; category: string; tags: string[]; pose: unknown } }
+  | { op: "addAction"; action: unknown }
   | { op: "autoKey"; scene: Id; item: Item; frame: number; auto?: boolean }
   | { op: "setKeys"; scene: Id; item?: Id | null; path: string; keys: Key[]; replace?: boolean }
   | { op: "deleteKeys"; scene: Id; item?: Id | null; path?: string | null; frames?: number[] | null; from?: number | null; to?: number | null }

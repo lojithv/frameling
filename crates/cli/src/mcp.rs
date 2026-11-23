@@ -102,6 +102,31 @@ fn tools() -> Value {
             "scene": { "type": "string" }, "item": { "type": "string" }, "action": { "type": "string" }, "seconds": { "type": "number" }, "size": { "type": "integer", "description": "default 320" }
         }), &["scene", "item"])),
         tool("import_parts_pack", "Load a part pack (pack.json with a parts[] list) so its parts can be used. Characters that wear them carry copies inside the project file.", obj(json!({ "path": { "type": "string" } }), &["path"])),
+        tool("list_poses", "The pose library: reusable poses (stand, sit, kneel, point, phone call, cheer, lying, walk stride...) that fit every character, plus poses saved in this project. Optional words filter by name and tags.", obj(json!({ "query": { "type": "string" }, "category": { "type": "string" } }), &[])),
+        tool("add_pose_strip", "Hold a pose on a character for a while, blending in and out of whatever it was doing: e.g. sit from 2s to 6s. mask 'upper' poses only head and arms, so a character can point while walking. Strips stack in order.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "pose": { "type": "string", "description": "pose id from list_poses" },
+            "start_seconds": { "type": "number" }, "end_seconds": { "type": "number" },
+            "blend_seconds": { "type": "number", "description": "blend in and out, default 0.3" },
+            "mask": { "type": "string", "enum": ["full", "upper", "lower", "armL", "armR", "head"] },
+            "mirror": { "type": "boolean", "description": "use the left-right mirrored pose" },
+            "breathe": { "type": "boolean", "description": "subtle breathing while held (default true)" }
+        }), &["scene", "item", "pose", "start_seconds", "end_seconds"])),
+        tool("remove_pose_strips", "Remove a character's pose strips: all of them, or those using one pose id.", obj(json!({ "scene": { "type": "string" }, "item": { "type": "string" }, "pose": { "type": "string" } }), &["scene", "item"])),
+        tool("apply_pose", "Write a pose as bone keyframes at a time (pose-to-pose animation). Keys hold until the next key; the interp shapes the move to the next one. mask limits which joints are keyed.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "pose": { "type": "string" }, "seconds": { "type": "number" },
+            "mask": { "type": "string", "enum": ["full", "upper", "lower", "armL", "armR", "head"] }, "mirror": { "type": "boolean" },
+            "interp": { "description": "easeInOut (default), linear, back, bounce, ..." }
+        }), &["scene", "item", "pose", "seconds"])),
+        tool("save_pose", "Save a pose in the project: from a character as it is at a time (its action, strips and keys), or from explicit joint values ({ls, le, rs, re, lh, lk, rh, rk, lean, head, bob, rise, drop, fold, tilt, ground, look, thumb}).", obj(json!({
+            "id": { "type": "string" }, "name": { "type": "string" }, "category": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } },
+            "scene": { "type": "string" }, "item": { "type": "string" }, "seconds": { "type": "number" }, "pose": { "type": "object" }
+        }), &["id"])),
+        tool("make_clip_from_poses", "Chain poses into a reusable animation (an action any character can play): hold each pose, then move to the next over gap_seconds. Optionally give it to a character right away.", obj(json!({
+            "id": { "type": "string" }, "name": { "type": "string" },
+            "poses": { "type": "array", "items": { "type": "object", "properties": { "pose": { "type": "string" }, "hold": { "type": "number", "description": "seconds" }, "mirror": { "type": "boolean" } }, "required": ["pose"] } },
+            "gap_seconds": { "type": "number", "description": "default 0.4" }, "loop": { "type": "boolean" },
+            "scene": { "type": "string" }, "item": { "type": "string", "description": "character to play it" }
+        }), &["id", "poses"])),
         tool("command_reference","Full reference for commands, item fields, the screenplay format and the workflow.", obj(json!({}), &[])),
     ])
 }
@@ -549,6 +574,127 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 let pid = self.lib.add_pack(pack)?;
                 Ok(text(format!("Loaded pack {pid:?} with {} part(s): {}", ids.len(), ids.join(", "))))
             }
+            "list_poses" => {
+                let q = s("query").unwrap_or("").to_lowercase();
+                let words: Vec<&str> = q.split_whitespace().collect();
+                let mut all: Vec<&frameling_core::pack::PoseDef> = self.ed.project.poses.values().collect();
+                all.extend(self.lib.poses.values().filter(|p| !self.ed.project.poses.contains_key(&p.id)));
+                let rows: Vec<String> = all
+                    .into_iter()
+                    .filter(|p| s("category").is_none_or(|c| p.category.eq_ignore_ascii_case(c)))
+                    .filter(|p| {
+                        let hay = format!("{} {} {}", p.id, p.name, p.tags.join(" ")).to_lowercase();
+                        words.iter().all(|w| hay.contains(w))
+                    })
+                    .map(|p| format!("  {} ({}) [{}]: {}", p.id, p.name, p.category, p.tags.join(" ")))
+                    .collect();
+                Ok(text(format!("{} pose(s):\n{}\nUse them with add_pose_strip (hold, blends, masks), apply_pose (keys) or make_clip_from_poses.", rows.len(), rows.join("\n"))))
+            }
+            "add_pose_strip" => {
+                let (scene, id, pose) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?, s("pose").ok_or("pose is required")?);
+                if poses::find(Some(&self.ed.project), &self.lib, pose).is_none() {
+                    return Err(format!("unknown pose {pose:?}; list_poses shows the ids"));
+                }
+                let fps = self.ed.project.fps as f64;
+                let num = |k: &str| a.get(k).and_then(Value::as_f64);
+                let start = (num("start_seconds").unwrap_or(0.0) * fps).round().max(0.0) as u32;
+                let end = (num("end_seconds").unwrap_or(0.0) * fps).round().max(0.0) as u32;
+                if end <= start {
+                    return Err("end_seconds must be after start_seconds".into());
+                }
+                let blend = (num("blend_seconds").unwrap_or(0.3) * fps).round().max(0.0) as u32;
+                let mask: poses::PoseMask = match s("mask") {
+                    Some(m) => serde_json::from_value(json!(m)).map_err(|_| format!("unknown mask {m:?}"))?,
+                    None => poses::PoseMask::Full,
+                };
+                let strip = poses::PoseStrip {
+                    pose: pose.into(),
+                    start,
+                    end,
+                    blend_in: blend.min((end - start) / 2),
+                    blend_out: blend.min((end - start) / 2),
+                    mask,
+                    mirror: a.get("mirror").and_then(Value::as_bool).unwrap_or(false),
+                    breathe: a.get("breathe").and_then(Value::as_bool).unwrap_or(true),
+                    custom: None,
+                };
+                let mut item = self.ed.project.scene(scene).and_then(|sc| sc.item(id)).cloned().ok_or("no such character in that scene")?;
+                let ItemKind::Character(c) = &mut item.kind else { return Err("that item is not a character".into()) };
+                c.poses.push(strip);
+                let n = c.poses.len();
+                self.ed.apply(&Command::UpdateItem { scene: scene.into(), item }, None)?;
+                self.save()?;
+                Ok(text(format!("{id} holds {pose:?} from {:.2}s to {:.2}s ({n} strip(s) on it). Check with render_frame.", start as f64 / fps, end as f64 / fps)))
+            }
+            "remove_pose_strips" => {
+                let (scene, id) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?);
+                let mut item = self.ed.project.scene(scene).and_then(|sc| sc.item(id)).cloned().ok_or("no such character in that scene")?;
+                let ItemKind::Character(c) = &mut item.kind else { return Err("that item is not a character".into()) };
+                let before = c.poses.len();
+                match s("pose") {
+                    Some(p) => c.poses.retain(|x| x.pose != p),
+                    None => c.poses.clear(),
+                }
+                let removed = before - c.poses.len();
+                self.ed.apply(&Command::UpdateItem { scene: scene.into(), item }, None)?;
+                self.save()?;
+                Ok(text(format!("Removed {removed} pose strip(s).")))
+            }
+            "apply_pose" => {
+                let (scene, id, pose) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?, s("pose").ok_or("pose is required")?);
+                let def = poses::find(Some(&self.ed.project), &self.lib, pose).ok_or_else(|| format!("unknown pose {pose:?}; list_poses shows the ids"))?;
+                let p = if a.get("mirror").and_then(Value::as_bool).unwrap_or(false) { poses::mirror(&def.pose) } else { def.pose };
+                let mask: poses::PoseMask = match s("mask") {
+                    Some(m) => serde_json::from_value(json!(m)).map_err(|_| format!("unknown mask {m:?}"))?,
+                    None => poses::PoseMask::Full,
+                };
+                let interp: Interp = match a.get("interp") {
+                    Some(v) => serde_json::from_value(v.clone()).map_err(|e| format!("bad interp: {e}"))?,
+                    None => Interp::EaseInOut,
+                };
+                let frame = (a.get("seconds").and_then(Value::as_f64).unwrap_or(0.0) * self.ed.project.fps as f64).round().max(0.0) as u32;
+                let cmds: Vec<Command> = poses::pose_keys(&p, mask)
+                    .into_iter()
+                    .map(|(path, v)| Command::SetKeys { scene: scene.into(), item: Some(id.into()), path: path.into(), keys: vec![Key::new(frame, v).with(interp)], replace: false })
+                    .collect();
+                let n = cmds.len();
+                self.ed.apply(&Command::Batch { commands: cmds }, None)?;
+                self.save()?;
+                Ok(text(format!("Keyed {pose:?} on {id} at frame {frame} ({n} joints). Keys hold until the next key; add another pose later to animate between them.")))
+            }
+            "save_pose" => {
+                let pid = s("id").ok_or("id is required")?;
+                let pose: frameling_core::rig::Pose = if let Some(v) = a.get("pose") {
+                    serde_json::from_value(v.clone()).map_err(|e| format!("bad pose: {e}"))?
+                } else {
+                    let (scene, id) = (s("scene").ok_or("give pose values, or scene + item (+ seconds)")?, s("item").ok_or("item is required")?);
+                    let local = (a.get("seconds").and_then(Value::as_f64).unwrap_or(0.0) * self.ed.project.fps as f64).round().max(0.0) as u32;
+                    eval::posed_character(&self.ed.project, &self.lib, scene, id, local).ok_or("no such character in that scene")?
+                };
+                let tags: Vec<String> = serde_json::from_value(a.get("tags").cloned().unwrap_or(json!([]))).unwrap_or_default();
+                let def = frameling_core::pack::PoseDef { id: pid.into(), name: s("name").unwrap_or(pid).into(), category: s("category").unwrap_or("Saved").into(), tags, pose };
+                self.ed.apply(&Command::AddPose { pose: def }, None)?;
+                self.save()?;
+                Ok(text(format!("Saved pose {pid:?} in the project.")))
+            }
+            "make_clip_from_poses" => {
+                let aid = s("id").ok_or("id is required")?;
+                let steps: Vec<poses::ChainStep> = serde_json::from_value(a.get("poses").cloned().unwrap_or(json!([]))).map_err(|e| format!("bad poses: {e}"))?;
+                let gap = a.get("gap_seconds").and_then(Value::as_f64).unwrap_or(0.4) as f32;
+                let looped = a.get("loop").and_then(Value::as_bool).unwrap_or(false);
+                let action = poses::chain(aid, s("name").unwrap_or(aid), &steps, gap, looped, Some(&self.ed.project), &self.lib)?;
+                let dur = action.duration;
+                let mut cmds = vec![Command::AddAction { action }];
+                if let (Some(scene), Some(id)) = (s("scene"), s("item")) {
+                    let mut item = self.ed.project.scene(scene).and_then(|sc| sc.item(id)).cloned().ok_or("no such character in that scene")?;
+                    let ItemKind::Character(c) = &mut item.kind else { return Err("that item is not a character".into()) };
+                    c.action = aid.into();
+                    cmds.push(Command::UpdateItem { scene: scene.into(), item });
+                }
+                self.ed.apply(&Command::Batch { commands: cmds }, None)?;
+                self.save()?;
+                Ok(text(format!("Made animation {aid:?} ({:.2}s{}). Any character can play it as its action.", dur, if looped { ", looping" } else { "" })))
+            }
             "command_reference" => Ok(text(REFERENCE)),
             other => Err(format!("unknown tool {other}")),
         }
@@ -563,7 +709,7 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 "protocolVersion": msg["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "frameling", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Frameling makes animated cartoon videos. Start with get_project and get_library. Use script_to_video for a quick first cut, search_parts + create_character to design characters from a description (check with preview_character), apply_commands for precise edits, say_line for dialogue, set_keys to animate any property over time (movement, rotation, scale, bones, skin colour, outfits, expression, camera), and render_frame to look at your work before export_video."
+                "instructions": "Frameling makes animated cartoon videos. Start with get_project and get_library. Use script_to_video for a quick first cut, search_parts + create_character to design characters from a description (check with preview_character), list_poses + add_pose_strip to hold poses like sit, kneel or point (with blends; mask 'upper' to gesture while walking), apply_commands for precise edits, say_line for dialogue, set_keys to animate any property over time (movement, rotation, scale, bones, skin colour, outfits, expression, camera), and render_frame to look at your work before export_video."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),

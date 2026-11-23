@@ -198,22 +198,8 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
         ItemKind::Character(c) => {
             let secs = since / fps * c.speed.max(0.05);
             let level = speech_level(project, scene, &item.id, local);
-            let action_id = if moving && c.auto_walk {
-                "walk"
-            } else if level.is_some() && c.auto_talk && c.action == "idle" {
-                "talk"
-            } else {
-                c.action.as_str()
-            };
-            let mut pose = lib
-                .actions
-                .get(action_id)
-                .or_else(|| lib.actions.get("idle"))
-                .map(|a| sample_action(a, secs))
-                .unwrap_or_default();
-            if moving && c.auto_walk {
-                pose.look = if flip { -dir } else { dir };
-            }
+            let mut pose = character_pose(project, lib, item, c, local, secs, moving, dir, flip, level.is_some());
+            pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
             anim::apply_bones(&item.tracks, &mut pose, local);
             let phase = (hash_str(&item.id) % 1000) as f32 / 1000.0 * 3.0;
             let blink = ((local as f32 / fps) + phase).rem_euclid(3.6) < 0.12;
@@ -389,4 +375,84 @@ pub fn item_preview(lib: &Library, parts: &std::collections::BTreeMap<String, cr
         }
     }
     DisplayList { width, height, background: None, ops: vec![Op::group(fit, 1.0, ops)] }
+}
+
+/// Running starts above this speed (stage px per frame at scale 1).
+const RUN_SPEED: f32 = 9.0;
+/// Fastest cycles per frame before the stride stops growing and the feet
+/// slide a little (a brisk walk, a sprint).
+const MAX_WALK_CPF: f32 = 1.7 / 30.0;
+const MAX_RUN_CPF: f32 = 2.7 / 30.0;
+
+/// The fastest a character travels between its position keys (or along its
+/// old-style movement), in stage px per frame. Constant for the item, so the
+/// walk cycle never jumps when easing changes the speed.
+fn travel_speed(item: &Item) -> f32 {
+    let mut best: f32 = 0.0;
+    let seg = |t: Option<&anim::Track>| -> Vec<(u32, f32)> { t.map(|t| t.keys.iter().map(|k| (k.frame, k.value.as_f64().unwrap_or(0.0) as f32)).collect()).unwrap_or_default() };
+    for keys in [seg(item.tracks.get(anim::Channel::X.path())), seg(item.tracks.get(anim::Channel::Y.path()))] {
+        for w in keys.windows(2) {
+            let df = w[1].0.saturating_sub(w[0].0).max(1) as f32;
+            best = best.max((w[1].1 - w[0].1).abs() / df);
+        }
+    }
+    if let Some(m) = item.motion {
+        let df = m.end.saturating_sub(m.start).max(1) as f32;
+        best = best.max(((m.x - item.x).powi(2) + (m.y - item.y).powi(2)).sqrt() / df);
+    }
+    best
+}
+
+/// A character's animated pose before pose strips and bone keys: the walk or
+/// run cycle while moving (locked to the distance travelled, so feet don't
+/// slide), otherwise its action (talking while it speaks).
+#[allow(clippy::too_many_arguments)]
+fn character_pose(project: &Project, lib: &Library, item: &Item, c: &crate::model::CharacterItem, local: u32, secs: f32, moving: bool, dir: f32, flip: bool, speaking: bool) -> crate::rig::Pose {
+    let facing = if flip { -1.0 } else { 1.0 };
+    let stick_k = if c.look.style == crate::model::FigureStyle::Stick { 93.0 / 90.0 } else { 1.0 };
+    if moving && c.auto_walk {
+        let (x0, y0) = anim::item_xy(item, local as f32);
+        let scale = anim::item_transform(item, local).scale.abs().max(0.05);
+        // Speed in character units: decides walk or run and the stride.
+        let speed = travel_speed(item) / scale;
+        let run = speed > RUN_SPEED;
+        let (base, max_cpf) = if run { (crate::rig::RUN_CYCLE, MAX_RUN_CPF) } else { (crate::rig::WALK_CYCLE, MAX_WALK_CPF) };
+        // Longer steps when faster; beyond the longest step, the cadence caps
+        // and the feet slide a little rather than spinning.
+        let needed = speed / max_cpf;
+        let stride = (needed / base).clamp(1.0, 1.6);
+        let cycle = (base * stride).max(needed) * scale * stick_k;
+        let travelled = if dir != 0.0 { x0 * dir } else { y0 };
+        let fwd = if dir != 0.0 { dir * facing } else { facing };
+        return crate::rig::locomotion_stride(travelled / cycle, run, fwd, stride);
+    }
+    let action_id = if speaking && c.auto_talk && c.action == "idle" { "talk" } else { c.action.as_str() };
+    // Walking or running on the spot: the same cycles, driven by time.
+    if action_id == "walk" || action_id == "run" {
+        let run = action_id == "run";
+        return crate::rig::locomotion(secs / if run { 0.62 } else { 1.0 }, run, facing);
+    }
+    project
+        .actions
+        .get(action_id)
+        .or_else(|| lib.actions.get(action_id))
+        .or_else(|| lib.actions.get("idle"))
+        .map(|a| sample_action(a, secs))
+        .unwrap_or_default()
+}
+
+/// A character's full pose at a scene frame (action or walk, pose strips and
+/// bone keys), e.g. to save it as a reusable pose.
+pub fn posed_character(project: &Project, lib: &Library, scene: &str, item: &str, local: u32) -> Option<crate::rig::Pose> {
+    let sc = project.scene(scene)?;
+    let it = sc.item(item)?;
+    let ItemKind::Character(c) = &it.kind else { return None };
+    let fps = project.fps.max(1) as f32;
+    let since = local.saturating_sub(it.start) as f32;
+    let tr = anim::item_transform(it, local);
+    let speaking = speech_level(project, sc, &it.id, local).is_some();
+    let mut pose = character_pose(project, lib, it, c, local, since / fps * c.speed.max(0.05), tr.moving, tr.dir, tr.flip, speaking);
+    pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
+    anim::apply_bones(&it.tracks, &mut pose, local);
+    Some(pose)
 }

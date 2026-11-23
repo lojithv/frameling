@@ -12,12 +12,14 @@ Entries with the same `id` as built-in ones replace them.
   "props": [ { "id": "...", "name": "...", "category": "...", "colors": ["#hex"], "shapes": [ ... ] } ],
   "backgrounds": [ { "id": "...", "name": "...", "colors": ["#hex"], "shapes": [ ... ] } ],
   "actions": [ { "id": "...", "name": "...", "duration": 1.0, "loop": true, "keys": [ { "t": 0, "pose": { ... } } ] } ],
-  "parts": [ { "id": "...", "name": "...", "category": "headwear", "anchor": "head", "colors": ["#hex"], "tags": [], "shapes": [ ... ] } ]
+  "parts": [ { "id": "...", "name": "...", "category": "headwear", "anchor": "head", "colors": ["#hex"], "tags": [], "shapes": [ ... ] } ],
+  "poses": [ { "id": "...", "name": "...", "category": "Gestures", "tags": [], "pose": { "ls": 150, "le": 20 } } ]
 }
 ```
 
 `parts` are character wearables for the character creator; the fields and anchor coordinates
-are in [docs/CHARACTERS.md](../docs/CHARACTERS.md#custom-part-packs).
+are in [docs/CHARACTERS.md](../docs/CHARACTERS.md#custom-part-packs). `poses` add to the pose
+library; the joints are listed in [docs/POSES.md](../docs/POSES.md#joints).
 
 ## Coordinates
 

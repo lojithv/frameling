@@ -197,6 +197,28 @@ impl Engine {
         Ok(serde_json::to_string(&out).unwrap())
     }
 
+    /// A character's full pose at a frame (JSON), to save it as a pose.
+    pub fn character_pose(&self, scene: usize, id: &str, local: u32) -> Option<String> {
+        let sc = self.editor.project.scenes.get(scene)?;
+        eval::posed_character(&self.editor.project, &self.lib, &sc.id, id, local).map(|p| serde_json::to_string(&p).unwrap())
+    }
+
+    /// Bone track values that hold a pose (JSON [[path, value], ...]), for keying it.
+    pub fn pose_keys(&self, pose: &str, mask: &str, mirror: bool) -> Result<String, JsError> {
+        use frameling_core::poses;
+        let def = poses::find(Some(&self.editor.project), &self.lib, pose).ok_or_else(|| err(format!("unknown pose {pose:?}")))?;
+        let p = if mirror { poses::mirror(&def.pose) } else { def.pose };
+        let mask: poses::PoseMask = serde_json::from_value(serde_json::Value::String(mask.into())).map_err(err)?;
+        Ok(serde_json::to_string(&poses::pose_keys(&p, mask)).unwrap())
+    }
+
+    /// Chain poses into an animation (JSON ActionDef) from [{pose, hold, mirror}].
+    pub fn chain_poses(&self, id: &str, name: &str, steps_json: &str, gap: f32, looped: bool) -> Result<String, JsError> {
+        let steps: Vec<frameling_core::poses::ChainStep> = serde_json::from_str(steps_json).map_err(err)?;
+        let a = frameling_core::poses::chain(id, name, &steps, gap, looped, Some(&self.editor.project), &self.lib).map_err(err)?;
+        Ok(serde_json::to_string(&a).unwrap())
+    }
+
     /// Definitions of pack parts that are not built in (to copy into the
     /// project with the addParts command). `ids_json` is a list of part ids.
     pub fn part_defs(&self, ids_json: &str) -> String {

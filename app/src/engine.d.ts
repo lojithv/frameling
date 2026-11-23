@@ -35,5 +35,8 @@ declare module "*/engine/frameling.js" {
     selected_parts(lookJson: string): string;
     randomize_look(lookJson: string, seed: number, locksJson: string): string;
     part_defs(idsJson: string): string;
+    character_pose(scene: number, id: string, local: number): string | undefined;
+    pose_keys(pose: string, mask: string, mirror: boolean): string;
+    chain_poses(id: string, name: string, stepsJson: string, gap: number, looped: boolean): string;
   }
 }

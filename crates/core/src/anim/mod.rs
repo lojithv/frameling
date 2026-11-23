@@ -138,6 +138,11 @@ pub fn apply_bones(tracks: &Tracks, pose: &mut Pose, frame: u32) {
             Bone::Rk => &mut pose.rk,
             Bone::Look => &mut pose.look,
             Bone::Thumb => &mut pose.thumb,
+            Bone::Drop => &mut pose.drop,
+            Bone::Fold => &mut pose.fold,
+            Bone::Kneel => &mut pose.kneel,
+            Bone::Tilt => &mut pose.tilt,
+            Bone::Ground => &mut pose.ground,
         };
         *slot = v;
     }

@@ -72,6 +72,10 @@ pub enum Command {
     /// Copy character part definitions into the project (from an imported
     /// part pack), so characters wearing them render anywhere.
     AddParts { parts: Vec<crate::pack::PartDef> },
+    /// Save a pose in the project (replaces one with the same id).
+    AddPose { pose: crate::pack::PoseDef },
+    /// Add or replace an animation in the project (e.g. chained from poses).
+    AddAction { action: crate::pack::ActionDef },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
 }
@@ -332,6 +336,19 @@ impl Command {
                     crate::pack::Part::compile(d)?;
                     p.parts.insert(d.id.clone(), d.clone());
                 }
+            }
+            Command::AddPose { pose } => {
+                check_id(&pose.id)?;
+                p.poses.insert(pose.id.clone(), pose.clone());
+            }
+            Command::AddAction { action } => {
+                check_id(&action.id)?;
+                if action.keys.is_empty() {
+                    return Err(format!("animation {:?} has no keys", action.id));
+                }
+                let mut a = action.clone();
+                a.keys.sort_by(|x, y| x.t.total_cmp(&y.t));
+                p.actions.insert(a.id.clone(), a);
             }
             Command::Batch { commands } => {
                 for c in commands {

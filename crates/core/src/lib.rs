@@ -14,6 +14,7 @@ pub mod geom;
 pub mod model;
 pub mod pack;
 pub mod parts;
+pub mod poses;
 pub mod rig;
 pub mod stick;
 pub mod text;

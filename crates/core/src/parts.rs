@@ -396,8 +396,11 @@ impl Recipe {
     /// Describe a look as a recipe (every category, plus all colours).
     pub fn from_look(look: &Look, lib: &Library, project: Option<&Project>) -> Recipe {
         let sel = selected(look, lib, project);
+        // Only categories that apply to this figure style (no cartoon eyes on stick figures).
+        let fits: BTreeSet<String> = catalog(lib, Some(style_name(look))).into_iter().map(|p| p.category).collect();
         let mut parts: Vec<RecipePart> = CATEGORIES
             .iter()
+            .filter(|(c, _, _)| fits.contains(*c))
             .filter_map(|(c, _, _)| sel.get(*c))
             .filter(|id| !id.ends_with(":none") || id.starts_with("brows") || id.starts_with("nose") || id.starts_with("facialHair"))
             .filter(|id| id.contains(':'))

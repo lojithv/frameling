@@ -45,6 +45,12 @@ in the desktop app to watch the agent work.
 | `randomize_character` | Random look (seeded), with `keep` locks and pinned parts; also makes crowds |
 | `preview_character` | See one character on its own as a PNG |
 | `import_parts_pack` | Load a part pack (`parts[]`), e.g. custom hats or held props |
+| `list_poses` | The pose library (stand, sit, kneel, point, phone call, lying, ...) and saved poses |
+| `add_pose_strip` | Hold a pose for a time with blends; `mask: "upper"` gestures over a walk |
+| `remove_pose_strips` | Remove a character's held poses |
+| `apply_pose` | Write a pose as bone keys at a time (pose-to-pose) |
+| `save_pose` | Save a pose in the project, from joint values or a character at a time |
+| `make_clip_from_poses` | Chain poses into a reusable animation, optionally given to a character |
 | `command_reference` | This document |
 
 To design a character from a description: `search_parts` for each idea, `create_character` with
