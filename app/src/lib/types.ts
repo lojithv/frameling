@@ -172,6 +172,7 @@ export type Command =
   | { op: "updateAudio"; scene: Id; clip: AudioClip }
   | { op: "removeAudio"; scene: Id; id: Id }
   | { op: "addLine"; scene: Id; clipId: Id; media: Media; speaker: Id | null; start: number | null }
+  | { op: "autoKey"; scene: Id; item: Item; frame: number; auto?: boolean }
   | { op: "setKeys"; scene: Id; item?: Id | null; path: string; keys: Key[]; replace?: boolean }
   | { op: "deleteKeys"; scene: Id; item?: Id | null; path?: string | null; frames?: number[] | null; from?: number | null; to?: number | null }
   | { op: "setInterpolation"; scene: Id; item?: Id | null; path: string; frames?: number[] | null; interp: Interp }

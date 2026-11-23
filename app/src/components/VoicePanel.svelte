@@ -2,7 +2,7 @@
   // GoAnimate-style "make it talk": pick a voice for the character, type a
   // line (built-in TTS), record one, or upload one. Lines go on the scene one
   // after another and the scene grows to fit.
-  import { app, currentScene, run, secs, frames, toast, updateItem } from "../lib/store.svelte";
+  import { app, currentScene, run, secs, frames, toast, editItem } from "../lib/store.svelte";
   import { listVoices, previewVoice, sayLine, redoLine, startRecording, stopRecording, addRecordedLine, ttsAvailable, termsAccepted, acceptTerms, voiceTerms, splitVoiceId, BUILT_IN_LANGS } from "../lib/voice";
   import { importAudio, previewMedia, stopAudio } from "../lib/audio";
   import { placeLine } from "../lib/voice";
@@ -64,12 +64,12 @@
   function setVoice(id: string) {
     const it = structuredClone($state.snapshot(item)) as Item;
     (it.kind as CharacterKind).voice = id;
-    updateItem(it);
+    editItem(it);
   }
   function setSpeed(v: number) {
     const it = structuredClone($state.snapshot(item)) as Item;
     (it.kind as CharacterKind).voiceSpeed = v;
-    updateItem(it, "vspeed");
+    editItem(it, "vspeed");
   }
 
   async function say() {

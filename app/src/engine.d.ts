@@ -29,5 +29,6 @@ declare module "*/engine/frameling.js" {
     render_item_preview(itemJson: string, width: number, height: number, frame: number): Uint8Array;
     render_background_preview(id: string, width: number, height: number): Uint8Array;
     item_kind(scene: number, id: string): string | undefined;
+    posed_item(itemJson: string, frame: number): string;
   }
 }

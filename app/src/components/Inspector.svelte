@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { app, currentScene, selectedItem, updateItem, updateScene, endGesture, run, secs, frames } from "../lib/store.svelte";
+  import { app, currentScene, selectedPosed, editItem, keyFrames, setAutoKey, updateScene, endGesture, run, secs, frames, fmtTime } from "../lib/store.svelte";
   import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
   import type { AudioClip, CharacterKind, Effect, Item, PropKind, Scene, TextKind, TransitionKind } from "../lib/types";
 
   const scene = $derived(currentScene());
-  const item = $derived(selectedItem());
+  const item = $derived(selectedPosed());
   const project = $derived(app.project);
 
   const snap = <T,>(v: T): T => structuredClone($state.snapshot(v)) as T;
@@ -15,7 +15,7 @@
     if (!item) return;
     const it = snap(item);
     fn(it);
-    updateItem(it, key);
+    editItem(it, key);
   }
   function editKind<K extends Item["kind"]>(fn: (k: K) => void, key?: string) {
     edit((it) => fn(it.kind as K), key);
@@ -82,6 +82,38 @@
     run({ op: "updateAudio", scene: scene.id, clip: n }, key);
   }
   const fps = $derived(project?.fps ?? 30);
+
+  // ------------------------------------------------------------ keyframes
+  const keys = $derived(item ? keyFrames(item) : []);
+  const onKey = $derived(keys.includes(app.frame));
+  /** Plain-language names of the properties keyed on this frame. */
+  const PROP_NAMES: Record<string, string> = {
+    "transform.x": "position", "transform.y": "position", "transform.scale": "size", "transform.rotation": "rotation",
+    "transform.opacity": "opacity", "transform.flip": "flip", expression: "expression", outfit: "outfit",
+    "look.skin": "skin", "look.hair": "hair colour", "look.hairStyle": "hair style", "look.top": "top",
+    "look.bottom": "bottom", "look.shoes": "shoes", "look.accent": "accent", "look.build": "build",
+    "look.accessory": "accessory", "look.style": "style", "look.dress": "dress",
+  };
+  const keyedHere = $derived.by(() => {
+    if (!item?.tracks) return [];
+    const names = Object.entries(item.tracks)
+      .filter(([, t]) => t.keys.some((k) => k.frame === app.frame))
+      .map(([p]) => PROP_NAMES[p] ?? p.replace(/^bone\./, ""));
+    return [...new Set(names)];
+  });
+  const prevKey = $derived([...keys].reverse().find((f) => f < app.frame));
+  const nextKey = $derived(keys.find((f) => f > app.frame));
+  function deleteKeysHere() {
+    if (item && scene) run({ op: "deleteKeys", scene: scene.id, item: item.id, frames: [app.frame] });
+  }
+  function clearKeys() {
+    if (item && scene && confirm(`Remove all ${keys.length} keyframes from ${item.name}? It keeps how it looks at the playhead.`)) {
+      // Bake the current pose into the plain fields, then drop every track.
+      const it = snap(item);
+      it.tracks = {};
+      run({ op: "updateItem", scene: scene.id, item: it });
+    }
+  }
 </script>
 
 {#snippet swatches(value: string, colors: string[], onpick: (c: string) => void)}
@@ -126,6 +158,23 @@
       <button onclick={() => edit((it) => (it.locked = !it.locked))} title="Lock position" class:on={item.locked}>{item.locked ? "🔒" : "🔓"}</button>
       <button class="danger" onclick={remove} title="Delete (Del)">🗑</button>
     </div>
+    <div class="keys">
+      <button class="auto" class:on={app.autoKey} onclick={() => setAutoKey(!app.autoKey)}
+        title="Auto-key: when on, changing anything after the item's first frame records a keyframe at the playhead">
+        <span class="dot"></span>Auto-key
+      </button>
+      <button onclick={() => prevKey !== undefined && (app.frame = prevKey)} disabled={prevKey === undefined} title="Previous keyframe">◀◆</button>
+      <span class="diamond" class:on={onKey} title={onKey ? `Keyframe here: ${keyedHere.join(", ")}` : "No keyframe at the playhead"}>◆</span>
+      <button onclick={() => nextKey !== undefined && (app.frame = nextKey)} disabled={nextKey === undefined} title="Next keyframe">◆▶</button>
+      <button onclick={deleteKeysHere} disabled={!onKey} title="Delete the keyframes at the playhead">✕◆</button>
+      {#if keys.length}<button onclick={clearKeys} title="Remove all keyframes from this item">Clear</button>{/if}
+    </div>
+    <p class="keyhint">
+      {#if onKey}Keyframe at {fmtTime(app.frame)}: {keyedHere.join(", ")}.
+      {:else if keys.length}{keys.length} keyframe{keys.length === 1 ? "" : "s"}. Change something here to add one at {fmtTime(app.frame)}.
+      {:else if app.autoKey}Move the playhead ahead and change position, size, rotation, expression or colours to animate.
+      {:else}Auto-key is off: changes set the item's look for the whole scene.{/if}
+    </p>
 
     {#if kind.type === "character"}
       {@const ch = kind as CharacterKind}
@@ -421,6 +470,56 @@
   .actions .on {
     border-color: var(--accent);
     color: var(--text);
+  }
+  .keys {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 14px;
+    margin-top: 8px;
+  }
+  .keys button {
+    padding: 4px 7px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .keys button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .keys .auto {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: auto;
+  }
+  .keys .auto .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .keys .auto.on {
+    color: #ff6b6b;
+    border-color: #ff6b6b66;
+  }
+  .keys .auto.on .dot {
+    background: #ff4d4d;
+    box-shadow: 0 0 6px #ff4d4d;
+  }
+  .diamond {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 0 2px;
+  }
+  .diamond.on {
+    color: #ffcf5a;
+  }
+  .keyhint {
+    margin: 6px 14px 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--muted);
   }
   section {
     border-top: 1px solid var(--line);

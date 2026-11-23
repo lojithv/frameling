@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, eng, currentScene, selectedItem, updateItem, endGesture, run, toast } from "../lib/store.svelte";
+  import { app, eng, currentScene, selectedItem, selectedPosed, posedItem, updateItem, editItem, endGesture, run, toast } from "../lib/store.svelte";
   import { newCharacter, newProp, newText, CHARACTER_PRESETS } from "../lib/defaults";
   import type { Item, ItemHit, Scene } from "../lib/types";
   import { toImageData } from "../lib/thumbs";
@@ -11,7 +11,9 @@
 
   const project = $derived(app.project);
   const scene = $derived(currentScene());
-  const sel = $derived(selectedItem());
+  const raw = $derived(selectedItem());
+  /** The selection as it looks at the playhead (keyed values applied). */
+  const sel = $derived(selectedPosed());
   const k = $derived(project ? box.w / project.width : 1); // css px per project px
 
   // Fit a 16:9 (or project aspect) stage into the available space.
@@ -87,20 +89,14 @@
     return { x: (sx / k - project!.width / 2) / c.zoom + c.x, y: (sy / k - project!.height / 2) / c.zoom + c.y };
   }
 
-  function itemPos(it: Item, f: number) {
-    const m = it.motion;
-    if (!m || m.end <= m.start) return { x: it.x, y: it.y };
-    const t = Math.min(1, Math.max(0, (f - m.start) / (m.end - m.start)));
-    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    const u = m.ease === "linear" ? t : e;
-    return { x: it.x + (m.x - it.x) * u, y: it.y + (m.y - it.y) * u };
-  }
-
   // ------------------------------------------------------------ interaction
   type Drag =
-    | { kind: "move"; item: Item; sx: number; sy: number; target: "base" | "motion"; key: string }
+    | { kind: "move"; item: Item; sx: number; sy: number; target: "base" | "motion" | "legacy"; key: string }
     | { kind: "scale"; item: Item; ax: number; ay: number; d0: number; key: string }
     | { kind: "rotate"; item: Item; ax: number; ay: number; a0: number; key: string };
+
+  /** Items still using the old one-segment movement (no position keys) keep editing it directly. */
+  const legacyMotion = (it: Item) => !!it.motion && !it.tracks?.["transform.x"] && !it.tracks?.["transform.y"];
   let drag: Drag | null = null;
 
   function local(ev: PointerEvent | DragEvent) {
@@ -124,8 +120,10 @@
     app.selected = h?.id ?? null;
     const it = scene.items.find((i) => i.id === h?.id);
     if (!it || it.locked) return;
-    const target = it.motion && app.frame >= it.motion.end ? "motion" : "base";
-    drag = { kind: "move", item: structuredClone($state.snapshot(it)) as Item, sx: p.x, sy: p.y, target, key: `move-${Date.now()}` };
+    const legacy = legacyMotion(it);
+    const target = legacy ? (app.frame >= it.motion!.end ? "motion" : "legacy") : "base";
+    const start = legacy ? (structuredClone($state.snapshot(it)) as Item) : structuredClone(posedItem(it, app.frame));
+    drag = { kind: "move", item: start, sx: p.x, sy: p.y, target, key: `move-${Date.now()}` };
     canvas.setPointerCapture(ev.pointerId);
   }
 
@@ -133,11 +131,10 @@
     ev.stopPropagation();
     if (!sel || sel.locked) return;
     const item = structuredClone($state.snapshot(sel)) as Item;
-    const pos = itemPos(item, app.frame);
-    const a = toScreen(pos.x, pos.y);
+    const a = toScreen(item.x, item.y);
     const p = local(ev);
     if (kind === "motion") {
-      drag = { kind: "move", item, sx: p.x, sy: p.y, target: "motion", key: `motion-${Date.now()}` };
+      drag = { kind: "move", item: structuredClone($state.snapshot(raw!)) as Item, sx: p.x, sy: p.y, target: "motion", key: `motion-${Date.now()}` };
     } else if (kind === "scale") {
       drag = { kind, item, ax: a.x, ay: a.y, d0: Math.hypot(p.x - a.x, p.y - a.y) || 1, key: `scale-${Date.now()}` };
     } else {
@@ -170,7 +167,10 @@
       if (ev.shiftKey) deg = Math.round(deg / 15) * 15;
       it.rotation = Math.round(deg);
     }
-    updateItem(it, drag.key);
+    // Old-style movement edits the document item as is; everything else is an
+    // edit at the playhead, which auto-keys.
+    if (drag.kind === "move" && drag.target !== "base") updateItem(it, drag.key);
+    else editItem(it, drag.key);
   }
 
   function onUp() {
@@ -205,10 +205,10 @@
 
   const selHit = $derived(app.hits.find((h) => h.id === app.selected && h.bounds && h.bounds.w >= 0));
   const motionMarker = $derived.by(() => {
-    if (!sel?.motion || !scene || !project) return null;
+    if (!raw || !legacyMotion(raw) || !scene || !project) return null;
     void app.frame;
-    const a = toScreen(sel.x, sel.y);
-    const b = toScreen(sel.motion.x, sel.motion.y);
+    const a = toScreen(raw.x, raw.y);
+    const b = toScreen(raw.motion!.x, raw.motion!.y);
     return { a, b };
   });
 

@@ -8,9 +8,11 @@
 //! Keyed values override the item's static fields (and its legacy `motion`),
 //! so an item with no tracks renders exactly as before.
 
+pub mod autokey;
 pub mod path;
 pub mod track;
 
+pub use autokey::{autokey_item, posed_item, AUTO_CHANNELS};
 pub use path::{all_paths, Bone, Channel, LookField, Scope, ValueKind};
 pub use track::{Interp, Key, Track};
 

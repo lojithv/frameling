@@ -58,6 +58,17 @@ pub enum Command {
     /// Define (or with `outfit` = None, remove) a named costume on a character,
     /// which an `outfit` track can then switch to.
     DefineOutfit { scene: Id, item: Id, name: String, outfit: Option<LookPatch> },
+    /// Edit an item the way the editor shows it at `frame` (a scene-local
+    /// frame, keyed values baked in): changed animatable properties become
+    /// keyframes at `frame` (see `anim::autokey`), everything else is stored
+    /// as is. `auto` = false only keys properties that already have a track.
+    AutoKey {
+        scene: Id,
+        item: Item,
+        frame: u32,
+        #[serde(default = "yes")]
+        auto: bool,
+    },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
 }
@@ -76,6 +87,10 @@ fn tracks_mut<'a>(p: &'a mut Project, scene: &str, item: Option<&str>) -> Result
 
 fn scene_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Scene, String> {
     p.scenes.iter_mut().find(|s| s.id == id).ok_or_else(|| format!("no scene {id:?}"))
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -303,6 +318,11 @@ impl Command {
                         c.outfits.remove(name).ok_or_else(|| format!("no outfit {name:?}"))?;
                     }
                 }
+            }
+            Command::AutoKey { scene, item, frame, auto } => {
+                let s = scene_mut(p, scene)?;
+                let slot = s.items.iter_mut().find(|i| i.id == item.id).ok_or_else(|| format!("no item {:?}", item.id))?;
+                *slot = crate::anim::autokey_item(slot, item, *frame, *auto)?;
             }
             Command::Batch { commands } => {
                 for c in commands {

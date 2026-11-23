@@ -217,6 +217,13 @@ impl Engine {
         frameling_render::render(&dl, width, height)
     }
 
+    /// An item (JSON) as it looks at a scene-local frame, with keyed values
+    /// baked into its plain fields: what the inspector shows and edits.
+    pub fn posed_item(&self, item_json: &str, frame: u32) -> Result<String, JsError> {
+        let item: frameling_core::model::Item = serde_json::from_str(item_json).map_err(err)?;
+        serde_json::to_string(&frameling_core::anim::posed_item(&item, frame)).map_err(err)
+    }
+
     /// The kind of an item as a string, handy for the UI.
     pub fn item_kind(&self, scene: usize, id: &str) -> Option<String> {
         let s = self.editor.project.scenes.get(scene)?;

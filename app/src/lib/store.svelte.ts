@@ -29,7 +29,25 @@ export const app = $state({
   /** Last known modification time of filePath (desktop), to notice agent edits. */
   fileMtime: 0,
   exporting: null as null | { done: number; total: number; label: string },
+  /** Changes made at the playhead become keyframes (see editItem). */
+  autoKey: readAutoKey(),
 });
+
+function readAutoKey(): boolean {
+  try {
+    return localStorage.getItem("frameling.autoKey") !== "off";
+  } catch {
+    return true;
+  }
+}
+export function setAutoKey(on: boolean) {
+  app.autoKey = on;
+  try {
+    localStorage.setItem("frameling.autoKey", on ? "on" : "off");
+  } catch {
+    /* private mode */
+  }
+}
 
 export async function boot() {
   await init();
@@ -102,6 +120,40 @@ export function currentScene(): Scene | null {
 export function selectedItem(): Item | null {
   const s = currentScene();
   return s?.items.find((i) => i.id === app.selected) ?? null;
+}
+
+/** An item as it looks at the playhead: keyed values baked into its fields. */
+export function posedItem(item: Item, frame = app.frame): Item {
+  if (!item.tracks || Object.keys(item.tracks).length === 0) return item;
+  try {
+    return JSON.parse(eng().posed_item(JSON.stringify($state.snapshot(item)), frame));
+  } catch {
+    return item;
+  }
+}
+
+/** The selected item posed at the playhead (what the inspector shows). */
+export function selectedPosed(): Item | null {
+  const it = selectedItem();
+  return it ? posedItem(it, app.frame) : null;
+}
+
+/**
+ * Store an edit of a posed item made at the playhead. With auto-key on, a
+ * changed property becomes a keyframe at the playhead (its first change past
+ * the item's first frame also keys the old value there); properties that are
+ * already animated are always keyed. Other fields are stored as they are.
+ */
+export function editItem(item: Item, merge?: string) {
+  const s = currentScene();
+  if (s) run({ op: "autoKey", scene: s.id, item, frame: app.frame, auto: app.autoKey }, merge);
+}
+
+/** Every frame with a key on the item, sorted. */
+export function keyFrames(item: Item): number[] {
+  const set = new Set<number>();
+  for (const t of Object.values(item.tracks ?? {})) for (const k of t.keys) set.add(k.frame);
+  return [...set].sort((a, b) => a - b);
 }
 
 export function updateItem(item: Item, merge?: string) {

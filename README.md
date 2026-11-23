@@ -15,6 +15,7 @@ the browser.
 - **Voices and lip sync**: select a character, type a line and pick a voice (**built-in offline text-to-speech**), record with the mic, or upload a file. Lines play one after another, the scene grows to fit, and the character lip-syncs and gestures. See [docs/VOICES.md](docs/VOICES.md).
 - **Agent-native**: an MCP server (`frameling mcp`) lets AI agents read the scene, use the library and voices, apply any edit, make characters talk, look at rendered frames and export. They can also turn a screenplay into a video. The desktop app updates live while an agent works. See [docs/AGENTS.md](docs/AGENTS.md).
 - **Movement**: give anything a start and end point; characters walk there and face the way they're going.
+- **Auto-key animation**: set an item up, move the playhead ahead and change it (drag, resize, rotate, expression, skin, hair or clothing colours, hair style, accessories, opacity, flip). The change becomes a keyframe at the playhead, with the first setting keyed at the item's start, so it animates between them. Keyframes show as diamonds on the timeline; the Auto-key switch in the inspector turns it off.
 - **Text**: speech and thought bubbles, captions and titles, with a typewriter effect.
 - **Scenes and timeline**: scene strip with drag-to-reorder and transitions (crossfade, dip to black, slide, zoom); per-scene tracks with draggable timing bars; camera pan and zoom.
 - **Effects**: fade, pop and slide in/out per item.

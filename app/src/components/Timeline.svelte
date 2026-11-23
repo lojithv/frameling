@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, currentScene, run, updateItem, endGesture, fmtTime, secs, frames } from "../lib/store.svelte";
+  import { app, currentScene, run, updateItem, endGesture, fmtTime, secs, frames, keyFrames } from "../lib/store.svelte";
   import { newScene, uid } from "../lib/defaults";
   import { sceneThumb } from "../lib/thumbs";
   import { play, stop } from "../lib/playback";
@@ -98,6 +98,11 @@
         if (it.motion && orig.motion) {
           it.motion.start = Math.max(0, orig.motion.start + (it.start - orig.start));
           it.motion.end = it.motion.start + (orig.motion.end - orig.motion.start);
+        }
+        // Keyframes travel with the item.
+        const shift = it.start - orig.start;
+        for (const [p, t] of Object.entries(orig.tracks ?? {})) {
+          it.tracks![p] = { keys: t.keys.map((k) => ({ ...k, frame: Math.max(0, k.frame + shift) })) };
         }
       } else if (mode === "start") {
         it.start = Math.max(0, Math.min(end - 1, orig.start + d));
@@ -233,6 +238,17 @@
               {/if}
               <span class="edge r" onpointerdown={(e) => dragBar(e, it, "end")} role="presentation"></span>
             </div>
+            {#each keyFrames(it) as f (f)}
+              <button
+                class="kf"
+                class:sel={app.selected === it.id}
+                class:here={f === app.frame}
+                style:left={pct(f)}
+                title="Keyframe at {fmtTime(f)}: jump here"
+                aria-label="Keyframe at {fmtTime(f)}"
+                onpointerdown={(e) => { e.stopPropagation(); app.selected = it.id; app.frame = f; }}
+              ></button>
+            {/each}
           </div>
         {/each}
         {#each scene.audio as c (c.id)}
@@ -249,6 +265,28 @@
 </section>
 
 <style>
+  .kf {
+    position: absolute;
+    top: 50%;
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    margin: -5px 0 0 -5px;
+    transform: rotate(45deg);
+    background: #ffcf5a;
+    border: 1px solid #1c2032;
+    border-radius: 1px;
+    opacity: 0.7;
+    z-index: 2;
+    cursor: pointer;
+  }
+  .kf.sel {
+    opacity: 1;
+  }
+  .kf.here {
+    background: #fff;
+    box-shadow: 0 0 0 2px #ffcf5a;
+  }
   .timeline {
     border-top: 1px solid var(--line);
     display: flex;
