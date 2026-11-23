@@ -111,7 +111,13 @@ export interface CharacterKind {
   outfits?: Record<string, LookPatch>;
   /** Poses held over the animation, with blends in and out. */
   poses?: PoseStrip[];
+  /** Turnaround view. */
+  view?: View;
+  /** Face the way it walks. */
+  autoTurn?: boolean;
 }
+
+export type View = "front" | "frontRight" | "right" | "backRight" | "back" | "backLeft" | "left" | "frontLeft";
 
 export type PoseMask = "full" | "upper" | "lower" | "armL" | "armR" | "head";
 export interface PoseStrip {

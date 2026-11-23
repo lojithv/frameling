@@ -15,6 +15,7 @@
 //! | `look.hairStyle`, `look.build`, `look.accessory`, `look.style`, `look.dress` | character | enum name / bool (steps) |
 //! | `outfit` | character | outfit name, `"default"`, or a partial look object (steps) |
 //! | `expression` | character | expression name (steps) |
+//! | `view` | character | turnaround view: front, frontRight, right, backRight, back, backLeft, left, frontLeft (steps) |
 //! | `camera.x`, `camera.y`, `camera.zoom` | scene | number |
 //!
 //! Aliases (`x`, `bone.le`, `look.hair_style`, ...) are accepted and stored
@@ -116,6 +117,7 @@ pub enum Channel {
     Look(LookField),
     Outfit,
     Expression,
+    View,
     CameraX,
     CameraY,
     CameraZoom,
@@ -152,6 +154,7 @@ const SIMPLE: &[(&str, &[&str], Channel)] = &[
     ("transform.flip", &["flip"], Channel::Flip),
     ("outfit", &["costume", "look.outfit"], Channel::Outfit),
     ("expression", &["face", "look.expression"], Channel::Expression),
+    ("view", &["facing", "turn"], Channel::View),
     ("camera.x", &[], Channel::CameraX),
     ("camera.y", &[], Channel::CameraY),
     ("camera.zoom", &[], Channel::CameraZoom),
@@ -195,14 +198,14 @@ impl Channel {
     pub fn scope(self) -> Scope {
         match self {
             Channel::X | Channel::Y | Channel::Scale | Channel::ScaleX | Channel::ScaleY | Channel::Rotation | Channel::Opacity | Channel::Flip => Scope::Item,
-            Channel::Bone(_) | Channel::Look(_) | Channel::Outfit | Channel::Expression => Scope::Character,
+            Channel::Bone(_) | Channel::Look(_) | Channel::Outfit | Channel::Expression | Channel::View => Scope::Character,
             Channel::CameraX | Channel::CameraY | Channel::CameraZoom => Scope::Scene,
         }
     }
 
     pub fn kind(self) -> ValueKind {
         match self {
-            Channel::Flip | Channel::Outfit | Channel::Expression => ValueKind::Step,
+            Channel::Flip | Channel::Outfit | Channel::Expression | Channel::View => ValueKind::Step,
             Channel::Look(f) => match f {
                 LookField::Skin | LookField::Hair | LookField::Top | LookField::Bottom | LookField::Shoes | LookField::Accent => ValueKind::Color,
                 _ => ValueKind::Step,
@@ -231,6 +234,7 @@ impl Channel {
             ValueKind::Step => match self {
                 Channel::Flip | Channel::Look(LookField::Dress) => v.as_bool().map(Value::from).ok_or_else(|| bad("true or false")),
                 Channel::Expression => canon::<Expression>(v).map_err(|_| bad("an expression (neutral, happy, sad, angry, surprised, thinking, wink, worried, confused)")),
+                Channel::View => canon::<crate::model::View>(v).map_err(|_| bad("a view (front, frontRight, right, backRight, back, backLeft, left, frontLeft)")),
                 Channel::Look(LookField::HairStyle) => canon::<HairStyle>(v).map_err(|_| bad("a hair style (short, spiky, long, bun, curly, bald)")),
                 Channel::Look(LookField::Build) => canon::<Build>(v).map_err(|_| bad("a build (slim, regular, broad)")),
                 Channel::Look(LookField::Accessory) => canon::<Accessory>(v).map_err(|_| bad("an accessory (none, glasses, tie, cap, bow)")),

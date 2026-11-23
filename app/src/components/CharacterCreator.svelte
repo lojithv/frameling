@@ -151,6 +151,8 @@
   // ------------------------------------------------------------ preview
   let canvas: HTMLCanvasElement | undefined = $state();
   let action = $state("idle");
+  const TURN: CharacterKind["view"][] = ["front", "frontRight", "right", "backRight", "back", "backLeft", "left", "frontLeft"];
+  let turn = $state(0);
   let expression = $state<CharacterKind["expression"]>("happy");
   const PREVIEW_ACTIONS = [
     { id: "idle", label: "Idle" }, { id: "talk", label: "Talk" }, { id: "wave", label: "Wave" }, { id: "walk", label: "Walk" }, { id: "cheer", label: "Cheer" },
@@ -161,11 +163,13 @@
     (it.kind as CharacterKind).action = act;
     (it.kind as CharacterKind).expression = expression;
     (it.kind as CharacterKind).autoWalk = false;
+    (it.kind as CharacterKind).view = TURN[turn];
     return it;
   }
   $effect(() => {
     const c = canvas;
     if (!c) return;
+    void turn;
     const json = JSON.stringify(previewItem($state.snapshot(look) as Look, action));
     let frame = 0;
     let raf = 0;
@@ -203,6 +207,7 @@
     if (hit) return hit;
     const it = previewItem(l, "idle");
     (it.kind as CharacterKind).expression = "neutral";
+    (it.kind as CharacterKind).view = "front";
     const [w, h] = head ? [180, 300] : [110, 140];
     const px = eng().render_item_preview(JSON.stringify(it), w, h, 0);
     const c = scratch!;
@@ -315,6 +320,7 @@
         {#each PREVIEW_ACTIONS as a}
           <button class:on={action === a.id} onclick={() => (action = a.id)}>{a.label}</button>
         {/each}
+        <button class:on={turn !== 0} onclick={() => (turn = (turn + 1) % TURN.length)} title="Turn the preview around ({TURN[turn]})">⟳ Turn</button>
       </div>
       <div class="chips small">
         {#each ["neutral", "happy", "sad", "angry", "surprised", "wink"] as ex}

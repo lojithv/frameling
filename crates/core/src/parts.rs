@@ -306,7 +306,7 @@ pub fn worn(project: &Project, lib: &Library, look: &Look) -> Vec<Worn> {
                     &owned
                 }
             };
-            Some(Worn { anchor: part.def.anchor, layer: part.def.layer, hides_hair: part.def.hides_hair, ops: part.drawing.ops(&w.colors) })
+            Some(Worn { anchor: part.def.anchor, layer: part.def.layer, hides_hair: part.def.hides_hair, face: part.def.category == "eyewear", ops: part.drawing.ops(&w.colors) })
         })
         .collect()
 }

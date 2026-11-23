@@ -344,7 +344,57 @@ pub struct CharacterItem {
     /// Poses held over the animation, with blends in and out.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub poses: Vec<crate::poses::PoseStrip>,
+    /// Which way the character faces (turnaround view).
+    #[serde(skip_serializing_if = "is_default")]
+    pub view: View,
+    /// Turn to face the way it walks (side views; front or back when walking
+    /// toward or away from the camera).
+    pub auto_turn: bool,
 }
+
+/// The eight turnaround views. Right/left mean facing screen right/left.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum View {
+    #[default]
+    Front,
+    FrontRight,
+    Right,
+    BackRight,
+    Back,
+    BackLeft,
+    Left,
+    FrontLeft,
+}
+
+impl View {
+    pub const ALL: [View; 8] = [View::Front, View::FrontRight, View::Right, View::BackRight, View::Back, View::BackLeft, View::Left, View::FrontLeft];
+    /// Yaw in degrees: 0 front, 90 facing screen right, 180 back, -90 facing left.
+    pub fn yaw(self) -> f32 {
+        match self {
+            View::Front => 0.0,
+            View::FrontRight => 45.0,
+            View::Right => 90.0,
+            View::BackRight => 135.0,
+            View::Back => 180.0,
+            View::BackLeft => -135.0,
+            View::Left => -90.0,
+            View::FrontLeft => -45.0,
+        }
+    }
+    /// The same view seen in a mirror (an item flipped horizontally).
+    pub fn mirrored(self) -> View {
+        match self {
+            View::FrontRight => View::FrontLeft,
+            View::FrontLeft => View::FrontRight,
+            View::Right => View::Left,
+            View::Left => View::Right,
+            View::BackRight => View::BackLeft,
+            View::BackLeft => View::BackRight,
+            v => v,
+        }
+}
+    }
 
 impl Default for CharacterItem {
     fn default() -> Self {
@@ -359,6 +409,8 @@ impl Default for CharacterItem {
             voice_speed: 1.0,
             outfits: BTreeMap::new(),
             poses: Vec::new(),
+            view: View::Front,
+            auto_turn: true,
         }
     }
 }

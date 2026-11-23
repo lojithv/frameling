@@ -29,6 +29,23 @@ at its first frame to the new spot. To choose the start yourself:
 
 Before the start and after the end the character stands still.
 
+## Turnaround views
+
+Every character (cartoon, stick figure or one made in the creator) can face 8 ways:
+**front, front-right and front-left (3/4), right and left (side), back-right and back-left
+(3/4 from behind) and back**. The left views mirror the right ones.
+
+- **Inspector → Facing**: a compass seen from above the stage (the camera is at the bottom).
+  With Auto-key on, changing it at a later time keys a turn there (`view` track, steps).
+- **Face the way it walks** (on by default): a walking character turns to face where it goes:
+  side views walking left or right, front walking toward the camera, back walking away.
+- The far arm and leg are drawn behind the body and the near ones in front, so a side walk
+  reads correctly. From the side the walk swings forward and back with planted feet.
+- From behind there is no face: no eyes, mouth or lip sync, and glasses are hidden; hair covers
+  the head, a cape hangs in front and a necklace behind.
+- Poses work in every view: in side views arm and leg angles read as forward and back.
+- Agents: `turn_character` (set a view, or key a turn at a time) or `set_keys` with path `view`.
+
 ## Poses
 
 A pose is a set of joint values on the shared skeleton, so every pose fits every character:

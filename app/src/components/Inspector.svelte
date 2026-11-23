@@ -3,7 +3,7 @@
   import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
   import PosePanel from "./PosePanel.svelte";
-  import type { AudioClip, CharacterKind, Effect, Item, PropKind, Scene, TextKind, TransitionKind } from "../lib/types";
+  import type { AudioClip, CharacterKind, Effect, Item, PropKind, Scene, TextKind, TransitionKind, View } from "../lib/types";
 
   const scene = $derived(currentScene());
   const item = $derived(selectedPosed());
@@ -83,6 +83,17 @@
     run({ op: "updateAudio", scene: scene.id, clip: n }, key);
   }
   const fps = $derived(project?.fps ?? 30);
+  // Facing, laid out as seen from above the stage: the camera is at the bottom.
+  const VIEWS: { id: View; label: string; icon: string; area: string }[] = [
+    { id: "back", label: "Back (facing away)", icon: "⬆", area: "n" },
+    { id: "backRight", label: "Back, turned right", icon: "↗", area: "ne" },
+    { id: "right", label: "Facing right (side)", icon: "➡", area: "e" },
+    { id: "frontRight", label: "Front, turned right (3/4)", icon: "↘", area: "se" },
+    { id: "front", label: "Front", icon: "⬇", area: "s" },
+    { id: "frontLeft", label: "Front, turned left (3/4)", icon: "↙", area: "sw" },
+    { id: "left", label: "Facing left (side)", icon: "⬅", area: "w" },
+    { id: "backLeft", label: "Back, turned left", icon: "↖", area: "nw" },
+  ];
 
   // ------------------------------------------------------------ keyframes
   const keys = $derived(item ? keyFrames(item) : []);
@@ -253,6 +264,23 @@
         {@render slider("Speed", ch.speed, 0.25, 2.5, 0.05, "speed", (v) => editKind<CharacterKind>((k) => (k.speed = v), "speed"), (v) => `${v.toFixed(2)}×`)}
         <label class="check"><input type="checkbox" checked={ch.autoWalk} onchange={() => editKind<CharacterKind>((k) => (k.autoWalk = !k.autoWalk))} /> Walk while moving</label>
         <label class="check"><input type="checkbox" checked={ch.autoTalk} onchange={() => editKind<CharacterKind>((k) => (k.autoTalk = !k.autoTalk))} /> Gesture while talking</label>
+      </section>
+      <section>
+        <h3>Facing</h3>
+        <div class="compass" role="radiogroup" aria-label="Which way the character faces">
+          {#each VIEWS as v}
+            <button
+              class:on={(ch.view ?? "front") === v.id}
+              style:grid-area={v.area}
+              title={v.label}
+              aria-label={v.label}
+              onclick={() => editKind<CharacterKind>((k) => (k.view = v.id))}
+            >{v.icon}</button>
+          {/each}
+          <span class="me" style:grid-area="c">🧍</span>
+        </div>
+        <label class="check"><input type="checkbox" checked={ch.autoTurn ?? true} onchange={() => editKind<CharacterKind>((k) => (k.autoTurn = !(k.autoTurn ?? true)))} /> Face the way it walks</label>
+        <p class="hint small">With Auto-key on, changing the facing at a later time turns the character there.</p>
       </section>
       <PosePanel {item} />
       <section>
@@ -818,5 +846,34 @@
   }
   .chips .made {
     border-style: dashed;
+  }
+  .compass {
+    display: grid;
+    grid-template-areas: "nw n ne" "w c e" "sw s se";
+    grid-template-columns: repeat(3, 34px);
+    grid-template-rows: repeat(3, 30px);
+    gap: 3px;
+    justify-content: center;
+    margin: 4px 0 8px;
+  }
+  .compass button {
+    padding: 0;
+    font-size: 14px;
+  }
+  .compass button.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .compass .me {
+    display: grid;
+    place-items: center;
+    font-size: 16px;
+    opacity: 0.6;
+  }
+  .hint.small {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 4px 0 0;
   }
 </style>

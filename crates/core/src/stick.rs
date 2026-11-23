@@ -9,7 +9,7 @@ use crate::display::{Op, Path};
 use crate::geom::{Affine, Color};
 use crate::model::{Accessory, Build, Expression, HairStyle, Look};
 use crate::pack::{Anchor, Layer};
-use crate::rig::{wavy_mouth, worn_at, Face, Pose, Worn};
+use crate::rig::{head_part_t, limb_u, wavy_mouth, worn_at, Face, Pose, Worn};
 use crate::model::FacialHair;
 
 const HIP_Y: f32 = -100.0;
@@ -36,8 +36,13 @@ fn bone(start: (f32, f32), a1: f32, a2: f32, l1: f32, l2: f32, side: f32) -> ((f
 const HEAD_K: f32 = HEAD_R / 50.0;
 const BODY_K: f32 = 0.62;
 
-pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<Op> {
+/// A stick figure turned `th` degrees (0 front, 90 facing +x, 180 back).
+pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn], th: f32) -> Vec<Op> {
     let ink = look.top;
+    let (c, sn) = (th.to_radians().cos(), th.to_radians().sin());
+    let depth = |side: f32| -side * sn;
+    let mut sides = [-1.0f32, 1.0];
+    sides.sort_by(|a, b| depth(*a).total_cmp(&depth(*b)));
     let w: f32 = match look.build {
         Build::Slim => 7.0,
         Build::Regular => 9.0,
@@ -50,14 +55,18 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
     let mut legs = Vec::new();
     let thigh = 47.0 * (1.0 - pose.fold.clamp(0.0, 0.9));
     let shin = 46.0 * (1.0 - pose.kneel.clamp(0.0, 0.9));
-    for (side, h, k) in [(-1.0f32, pose.lh, pose.lk), (1.0, pose.rh, pose.rk)] {
-        let start = (side * 3.0, hip_y);
-        // A slight natural stance so the two legs never draw as one line.
-        let (knee, foot) = bone(start, h + 6.0, k - 4.0, thigh, shin, side);
+    for side in sides {
+        let (h, k) = if side < 0.0 { (pose.lh, pose.lk) } else { (pose.rh, pose.rk) };
+        let u = limb_u(side, th, pose.sagittal);
+        let start = (side * 3.0 * c, hip_y);
+        // A slight natural stance so the two legs never draw as one line
+        // (from the front; walk cycles place the feet themselves).
+        let stance = 1.0 - pose.sagittal.clamp(0.0, 1.0);
+        let (knee, foot) = bone(start, h + 6.0 * stance, k - 4.0 * stance, thigh, shin, u);
         contact.extend([(start.0, start.1, w), (knee.0, knee.1, w * 0.6), (foot.0, foot.1, w * 0.6)]);
         legs.push(Op::stroke(Path::polyline(&[start, knee, foot], false), ink, w));
-        // A short foot pointing outwards, following the shin a little.
-        let toe = (foot.0 + side * 13.0, foot.1 + 2.0);
+        // A short foot pointing outwards (forwards from the side).
+        let toe = (foot.0 + side * 13.0 * c + 13.0 * sn, foot.1 + 2.0);
         legs.push(Op::stroke(Path::polyline(&[foot, toe], false), look.shoes, w));
     }
 
@@ -86,6 +95,29 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
         upper.push(Op::group(head_t, 1.0, back));
     }
 
+    // Far arm behind the body.
+    let mut hands = Vec::new();
+    let mut arm = |upper: &mut Vec<Op>, side: f32, hands: &mut Vec<(f32, f32, f32)>| {
+        let (s, e) = if side < 0.0 { (pose.ls, pose.le) } else { (pose.rs, pose.re) };
+        let start = (side * 2.0 * c, SHOULDER_Y);
+        let (elbow, hand) = bone(start, s, e, 44.0, 42.0, limb_u(side, th, pose.sagittal));
+        hands.push((hand.0, hand.1, w));
+        let anchor = if side > 0.0 { Anchor::HandR } else { Anchor::HandL };
+        let hand_t = Affine::translate(hand.0, hand.1).then(&Affine::scale(0.85, 0.85));
+        upper.extend(worn_at(wear, anchor, Layer::Back, hand_t));
+        upper.push(Op::stroke(Path::polyline(&[start, elbow, hand], false), ink, w));
+        upper.push(Op::fill(Path::circle(hand.0, hand.1, w * 0.75), ink));
+        upper.extend(worn_at(wear, anchor, Layer::Front, hand_t));
+        if side > 0.0 && pose.thumb > 0.5 {
+            // Fist with the thumb pointing up, whatever the arm angle.
+            upper.push(Op::fill(Path::circle(hand.0, hand.1, w * 1.05), ink));
+            upper.push(Op::stroke(Path::polyline(&[(hand.0, hand.1 - 2.0), (hand.0, hand.1 - 20.0)], false), ink, w * 0.7));
+        }
+    };
+    for side in sides.into_iter().filter(|s| depth(*s) < -0.3) {
+        arm(&mut upper, side, &mut hands);
+    }
+
     // Spine
     upper.push(Op::stroke(Path::polyline(&[(0.0, HIP_Y), (0.0, NECK_Y)], false), ink, w));
 
@@ -101,7 +133,7 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
         upper.push(Op::stroke(p, ink, (w * 0.55).max(4.0)));
     }
 
-    if look.accessory == Accessory::Tie {
+    if look.accessory == Accessory::Tie && c > 0.15 {
         let mut p = Path::new();
         p.move_to(-6.0, NECK_Y + 6.0).line_to(6.0, NECK_Y + 6.0).line_to(8.0, NECK_Y + 46.0).line_to(0.0, NECK_Y + 56.0).line_to(-8.0, NECK_Y + 46.0).close();
         upper.push(Op::fill(p, look.accent));
@@ -110,29 +142,16 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
     upper.extend(worn_at(wear, Anchor::Torso, Layer::Front, torso_t));
     upper.extend(worn_at(wear, Anchor::Neck, Layer::Front, neck_t));
 
-    // Arms
-    let mut hands = Vec::new();
-    for (side, s, e) in [(-1.0f32, pose.ls, pose.le), (1.0, pose.rs, pose.re)] {
-        let start = (side * 2.0, SHOULDER_Y);
-        let (elbow, hand) = bone(start, s, e, 44.0, 42.0, side);
-        hands.push((hand.0, hand.1, w));
-        let anchor = if side > 0.0 { Anchor::HandR } else { Anchor::HandL };
-        let hand_t = Affine::translate(hand.0, hand.1).then(&Affine::scale(0.85, 0.85));
-        upper.extend(worn_at(wear, anchor, Layer::Back, hand_t));
-        upper.push(Op::stroke(Path::polyline(&[start, elbow, hand], false), ink, w));
-        upper.push(Op::fill(Path::circle(hand.0, hand.1, w * 0.75), ink));
-        upper.extend(worn_at(wear, anchor, Layer::Front, hand_t));
-        if side > 0.0 && pose.thumb > 0.5 {
-            // Fist with the thumb pointing up, whatever the arm angle.
-            upper.push(Op::fill(Path::circle(hand.0, hand.1, w * 1.05), ink));
-            upper.push(Op::stroke(Path::polyline(&[(hand.0, hand.1 - 2.0), (hand.0, hand.1 - 20.0)], false), ink, w * 0.7));
-        }
+    // Near (and front-view) arms in front.
+    for side in sides.into_iter().filter(|s| depth(*s) >= -0.3) {
+        arm(&mut upper, side, &mut hands);
     }
 
     // ---- head -------------------------------------------------------------
     let mut head = Vec::new();
-    draw_head(&mut head, look, pose, face, ink, w, wear.iter().any(|x| x.hides_hair));
-    head.extend(worn_at(wear, Anchor::Head, Layer::Front, Affine::scale(HEAD_K, HEAD_K)));
+    draw_head(&mut head, look, pose, face, ink, w, wear.iter().any(|x| x.hides_hair), th);
+    let parts: Vec<Worn> = wear.iter().filter(|x| !(x.face && th > 100.0)).cloned().collect();
+    head.extend(worn_at(&parts, Anchor::Head, Layer::Front, head_part_t(th).then(&Affine::scale(HEAD_K, HEAD_K))));
     upper.push(Op::group(head_t, 1.0, head));
 
     let lean_t = Affine::translate(0.0, hip_y + pose.bob).then(&Affine::rotate_deg(pose.lean)).then(&Affine::translate(0.0, -HIP_Y));
@@ -151,18 +170,52 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<O
     vec![Op::group(Affine::translate(0.0, -rise).then(&tilt_t), 1.0, all)]
 }
 
-fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, ink: Color, w: f32, hide_hair: bool) {
+fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, ink: Color, w: f32, hide_hair: bool, th: f32) {
     let r = HEAD_R;
-    if look.hair_style == HairStyle::Bun {
-        out.push(Op::fill(Path::circle(0.0, -r - 10.0, 15.0), look.hair));
+    let (c, sn) = (th.to_radians().cos(), th.to_radians().sin());
+    let back = th > 105.0;
+    if look.hair_style == HairStyle::Bun && !back {
+        out.push(Op::fill(Path::circle(-sn * 36.0, -r - 10.0 + sn * 12.0, 15.0), look.hair));
     }
     out.push(Op::fill(Path::circle(0.0, 0.0, r), look.skin));
+    if back {
+        // From behind: hair (or a bare head) and no face.
+        if !hide_hair && look.hair_style != HairStyle::Bald {
+            out.push(Op::fill(Path::circle(0.0, -4.0, r - 2.0), look.hair));
+            if look.hair_style == HairStyle::Long {
+                out.push(Op::fill(Path::round_rect(-r + 4.0, -10.0, 2.0 * r - 8.0, 66.0, 24.0), look.hair));
+            }
+            if look.hair_style == HairStyle::Bun {
+                out.push(Op::fill(Path::circle(0.0, -r - 6.0, 15.0), look.hair));
+            }
+        }
+        out.push(Op::stroke(Path::circle(0.0, 0.0, r), ink, (w * 0.8).max(5.0)));
+        if look.accessory == Accessory::Cap {
+            let mut p = Path::new();
+            p.move_to(-r - 1.0, -12.0).cubic_to(-r, -r * 1.35, r, -r * 1.35, r + 1.0, -12.0).close();
+            out.push(Op::fill(p, look.accent));
+        }
+        return;
+    }
     out.push(Op::stroke(Path::circle(0.0, 0.0, r), ink, (w * 0.8).max(5.0)));
 
-    draw_face(out, pose, face, ink);
-    draw_facial_hair(out, look);
+    // The face slides toward the way the head turns.
+    let face_t = Affine::translate(sn * 17.0, 0.0).then(&Affine::scale(1.0 - 0.45 * sn, 1.0));
+    let mut f = Vec::new();
+    draw_face(&mut f, pose, face, ink);
+    draw_facial_hair(&mut f, look);
+    out.push(Op::group(face_t, 1.0, f));
     if !hide_hair {
-        draw_hair(out, look);
+        let mut h = Vec::new();
+        draw_hair(&mut h, look);
+        out.push(Op::group(Affine::translate(-sn * 6.0, 0.0).then(&Affine::scale(0.7 + 0.3 * c, 1.0)), 1.0, h));
+    }
+    if th > 1.0 {
+        // Accessories below are drawn for the front; turn them with the face.
+        let mut acc = Vec::new();
+        draw_stick_accessory(&mut acc, look, ink, th);
+        out.push(Op::group(face_t, 1.0, acc));
+        return;
     }
 
     match look.accessory {
@@ -315,5 +368,31 @@ fn draw_facial_hair(out: &mut Vec<Op>, look: &Look) {
             p.move_to(-38.0, 8.0).cubic_to(-34.0, drop, 34.0, drop, 38.0, 8.0);
             out.push(Op::stroke(p, c, 5.0));
         }
+    }
+}
+
+/// Glasses, cap and bow, for a turned head (drawn in the face's frame).
+fn draw_stick_accessory(out: &mut Vec<Op>, look: &Look, ink: Color, th: f32) {
+    let r = HEAD_R;
+    match look.accessory {
+        Accessory::Glasses if th < 80.0 => {
+            for side in [-1.0f32, 1.0] {
+                out.push(Op::stroke(Path::circle(side * 14.0, -4.0, 10.0), ink, 3.0));
+            }
+            out.push(Op::stroke(Path::polyline(&[(-4.0, -5.0), (4.0, -5.0)], false), ink, 3.0));
+        }
+        Accessory::Cap => {
+            let mut p = Path::new();
+            p.move_to(-r - 1.0, -12.0).cubic_to(-r, -r * 1.35, r, -r * 1.35, r + 1.0, -12.0).close();
+            out.push(Op::fill(p, look.accent));
+            out.push(Op::fill(Path::round_rect(-2.0, -18.0, r + 26.0, 10.0, 5.0), look.accent.darken(0.25)));
+        }
+        Accessory::Bow => {
+            let (bx, by) = (24.0, -r + 2.0);
+            out.push(Op::fill(Path::polyline(&[(bx, by), (bx - 16.0, by - 11.0), (bx - 16.0, by + 11.0)], true), look.accent));
+            out.push(Op::fill(Path::polyline(&[(bx, by), (bx + 16.0, by - 11.0), (bx + 16.0, by + 11.0)], true), look.accent));
+            out.push(Op::fill(Path::circle(bx, by, 5.0), look.accent.darken(0.2)));
+        }
+        _ => {}
     }
 }

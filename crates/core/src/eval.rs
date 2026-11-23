@@ -199,6 +199,8 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
             let secs = since / fps * c.speed.max(0.05);
             let level = speech_level(project, scene, &item.id, local);
             let mut pose = character_pose(project, lib, item, c, local, secs, moving, dir, flip, level.is_some());
+            // From behind there is no mouth to move.
+            let level = if character_view(item, c, local, moving, dir, flip).yaw().abs() > 105.0 { None } else { level };
             pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
             anim::apply_bones(&item.tracks, &mut pose, local);
             let phase = (hash_str(&item.id) % 1000) as f32 / 1000.0 * 3.0;
@@ -206,7 +208,8 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
             let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth: level.unwrap_or(0) };
             let look = anim::resolve_look(c, &item.tracks, local);
             let wear = crate::parts::worn(project, lib, &look);
-            draw_character(&look, &pose, &face, &wear)
+            let view = character_view(item, c, local, moving, dir, flip);
+            draw_character(&look, &pose, &face, &wear, view.yaw())
         }
         ItemKind::Prop(p) => match lib.props.get(&p.prop) {
             Some(d) => d.ops(&p.colors),
@@ -403,6 +406,26 @@ fn travel_speed(item: &Item) -> f32 {
     best
 }
 
+/// Which way a character faces at a frame (in its own space, before the
+/// item's flip): its keyed or set view, or, while walking with auto-turn on,
+/// the way it is going (side views; front or back when walking toward or away).
+fn character_view(item: &Item, c: &crate::model::CharacterItem, local: u32, moving: bool, dir: f32, flip: bool) -> crate::model::View {
+    use crate::model::View;
+    if moving && c.auto_walk && c.auto_turn {
+        let screen = if dir > 0.0 {
+            View::Right
+        } else if dir < 0.0 {
+            View::Left
+        } else {
+            let (_, y0) = anim::item_xy(item, local as f32);
+            let (_, y1) = anim::item_xy(item, local as f32 + 1.0);
+            if y1 >= y0 { View::Front } else { View::Back }
+        };
+        return if flip { screen.mirrored() } else { screen };
+    }
+    anim::view(c, &item.tracks, local)
+}
+
 /// A character's animated pose before pose strips and bone keys: the walk or
 /// run cycle while moving (locked to the distance travelled, so feet don't
 /// slide), otherwise its action (talking while it speaks).
@@ -424,13 +447,22 @@ fn character_pose(project: &Project, lib: &Library, item: &Item, c: &crate::mode
         let cycle = (base * stride).max(needed) * scale * stick_k;
         let travelled = if dir != 0.0 { x0 * dir } else { y0 };
         let fwd = if dir != 0.0 { dir * facing } else { facing };
+        let yaw = character_view(item, c, local, moving, dir, flip).yaw();
+        // Seen from the side or 3/4 the legs swing forward and back.
+        if (45.0..=135.0).contains(&yaw.abs()) {
+            return crate::rig::locomotion_side(travelled / cycle, run, stride);
+        }
         return crate::rig::locomotion_stride(travelled / cycle, run, fwd, stride);
     }
     let action_id = if speaking && c.auto_talk && c.action == "idle" { "talk" } else { c.action.as_str() };
     // Walking or running on the spot: the same cycles, driven by time.
     if action_id == "walk" || action_id == "run" {
         let run = action_id == "run";
-        return crate::rig::locomotion(secs / if run { 0.62 } else { 1.0 }, run, facing);
+        let phase = secs / if run { 0.62 } else { 1.0 };
+        if (45.0..=135.0).contains(&anim::view(c, &item.tracks, local).yaw().abs()) {
+            return crate::rig::locomotion_side(phase, run, 1.0);
+        }
+        return crate::rig::locomotion(phase, run, facing);
     }
     project
         .actions

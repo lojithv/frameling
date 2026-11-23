@@ -33,6 +33,7 @@ pub const AUTO_CHANNELS: &[Channel] = &[
     Channel::Opacity,
     Channel::Flip,
     Channel::Expression,
+    Channel::View,
     Channel::Look(LookField::Skin),
     Channel::Look(LookField::Hair),
     Channel::Look(LookField::Top),
@@ -70,6 +71,7 @@ pub fn field(item: &Item, ch: Channel) -> Option<Value> {
         Channel::Opacity => num(item.opacity),
         Channel::Flip => Value::from(item.flip),
         Channel::Expression => to_value(&c?.expression),
+        Channel::View => to_value(&c?.view),
         Channel::Look(f) => {
             let l = &c?.look;
             match f {
@@ -111,6 +113,7 @@ pub fn set_field(item: &mut Item, ch: Channel, v: &Value) {
             }
             match ch {
                 Channel::Expression => parse(&mut c.expression, v),
+                Channel::View => parse(&mut c.view, v),
                 Channel::Look(LookField::Skin) => l.skin = col().unwrap_or(l.skin),
                 Channel::Look(LookField::Hair) => l.hair = col().unwrap_or(l.hair),
                 Channel::Look(LookField::Top) => l.top = col().unwrap_or(l.top),
@@ -142,6 +145,7 @@ pub fn posed_item(item: &Item, frame: u32) -> Item {
     out.flip = t.flip;
     if let (ItemKind::Character(src), ItemKind::Character(dst)) = (&item.kind, &mut out.kind) {
         dst.expression = expression(src, &item.tracks, frame);
+        dst.view = super::view(src, &item.tracks, frame);
         // Only the look fields with their own tracks: an outfit switch stays a
         // switch and is not baked into the base look.
         let look = resolve_look(src, &item.tracks, frame);

@@ -210,6 +210,15 @@ pub fn expression(c: &CharacterItem, tracks: &Tracks, frame: u32) -> Expression 
         .unwrap_or(c.expression)
 }
 
+/// The keyed view (turnaround), or the character's own.
+pub fn view(c: &CharacterItem, tracks: &Tracks, frame: u32) -> crate::model::View {
+    tracks
+        .get(Channel::View.path())
+        .and_then(|t| t.step(frame as f32))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or(c.view)
+}
+
 /// Camera tracks override the scene's from/to move channel by channel.
 pub fn camera(scene: &Scene, base: CamKey, frame: u32) -> CamKey {
     let t = &scene.tracks;

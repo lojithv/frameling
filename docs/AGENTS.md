@@ -51,6 +51,7 @@ in the desktop app to watch the agent work.
 | `apply_pose` | Write a pose as bone keys at a time (pose-to-pose) |
 | `save_pose` | Save a pose in the project, from joint values or a character at a time |
 | `make_clip_from_poses` | Chain poses into a reusable animation, optionally given to a character |
+| `turn_character` | Face one of 8 views now, or key a turn at a time; toggles face-the-way-it-walks |
 | `command_reference` | This document |
 
 To design a character from a description: `search_parts` for each idea, `create_character` with

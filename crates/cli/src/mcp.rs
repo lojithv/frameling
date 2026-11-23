@@ -127,6 +127,11 @@ fn tools() -> Value {
             "gap_seconds": { "type": "number", "description": "default 0.4" }, "loop": { "type": "boolean" },
             "scene": { "type": "string" }, "item": { "type": "string", "description": "character to play it" }
         }), &["id", "poses"])),
+        tool("turn_character", "Turn a character to one of 8 views: front, frontRight, right, backRight, back, backLeft, left, frontLeft (right/left = facing screen right/left; 3/4 views in between). Without seconds it sets how the character faces; with seconds it keys a turn at that time. auto_turn (default on) makes walking characters face the way they go.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" },
+            "view": { "type": "string", "enum": ["front", "frontRight", "right", "backRight", "back", "backLeft", "left", "frontLeft"] },
+            "seconds": { "type": "number" }, "auto_turn": { "type": "boolean" }
+        }), &["scene", "item"])),
         tool("command_reference","Full reference for commands, item fields, the screenplay format and the workflow.", obj(json!({}), &[])),
     ])
 }
@@ -306,7 +311,7 @@ impl Server {
                 let mut c = self.lib.catalog();
                 c["expressions"] = json!(["neutral", "happy", "sad", "angry", "surprised", "thinking", "wink", "worried", "confused"]);
                 c["styles"] = json!({ "style": ["cartoon", "stick"], "dress": "true/false (stick figures)", "stickTip": "a stick figure is look.style='stick': lines use look.top, head fill look.skin, dress/bow/cap/tie use look.accent" });
-                c["look"] = json!({ "hairStyle": ["short", "spiky", "long", "bun", "curly", "bald"], "build": ["slim", "regular", "broad"], "accessory": ["none", "glasses", "tie", "cap", "bow"] });
+                c["look"] = json!({ "hairStyle": ["short", "spiky", "long", "bun", "curly", "bald"], "build": ["slim", "regular", "broad"], "accessory": ["none", "glasses", "tie", "cap", "bow"] }); c["views"] = json!(["front", "frontRight", "right", "backRight", "back", "backLeft", "left", "frontLeft"]);
                 c["textStyles"] = json!(["bubble", "thought", "caption", "title", "plain"]);
                 Ok(text(serde_json::to_string_pretty(&c).unwrap()))
             }
@@ -694,6 +699,39 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 self.ed.apply(&Command::Batch { commands: cmds }, None)?;
                 self.save()?;
                 Ok(text(format!("Made animation {aid:?} ({:.2}s{}). Any character can play it as its action.", dur, if looped { ", looping" } else { "" })))
+            }
+            "turn_character" => {
+                let (scene, id) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?);
+                let view: Option<View> = match s("view") {
+                    Some(v) => Some(serde_json::from_value(json!(v)).map_err(|_| format!("unknown view {v:?}"))?),
+                    None => None,
+                };
+                let mut item = self.ed.project.scene(scene).and_then(|sc| sc.item(id)).cloned().ok_or("no such character in that scene")?;
+                let ItemKind::Character(c) = &mut item.kind else { return Err("that item is not a character".into()) };
+                if let Some(t) = a.get("auto_turn").and_then(Value::as_bool) {
+                    c.auto_turn = t;
+                }
+                let mut cmds = vec![];
+                let msg = match (view, a.get("seconds").and_then(Value::as_f64)) {
+                    (Some(v), Some(t)) => {
+                        let frame = (t * self.ed.project.fps as f64).round().max(0.0) as u32;
+                        // The first turn key also keys the current view at frame 0, so it only turns from then on.
+                        if !item.tracks.contains_key("view") && frame > 0 {
+                            cmds.push(Command::SetKeys { scene: scene.into(), item: Some(id.into()), path: "view".into(), keys: vec![Key::new(0, json!(c.view))], replace: false });
+                        }
+                        cmds.push(Command::SetKeys { scene: scene.into(), item: Some(id.into()), path: "view".into(), keys: vec![Key::new(frame, json!(v))], replace: false });
+                        format!("{id} turns to {v:?} at {t:.2}s.")
+                    }
+                    (Some(v), None) => {
+                        c.view = v;
+                        format!("{id} now faces {v:?}.")
+                    }
+                    (None, _) => "Updated.".into(),
+                };
+                cmds.insert(0, Command::UpdateItem { scene: scene.into(), item });
+                self.ed.apply(&Command::Batch { commands: cmds }, None)?;
+                self.save()?;
+                Ok(text(msg))
             }
             "command_reference" => Ok(text(REFERENCE)),
             other => Err(format!("unknown tool {other}")),
