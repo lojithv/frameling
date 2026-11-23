@@ -101,24 +101,31 @@ pub fn camera_at(scene: &Scene, local: u32) -> CamKey {
     anim::camera(scene, base, local)
 }
 
+/// Output pixels per world unit at zoom 1. The world is always laid out in
+/// design units (1280x720); any frame shape shows the part of it that covers
+/// the frame, like cropping: 1080p scales up 1.5x, vertical 9:16 shows a
+/// full-height slice, square a 720x720 slice.
+pub fn view_scale(project: &Project) -> f32 {
+    (project.width as f32 / DESIGN_W).max(project.height as f32 / DESIGN_H)
+}
+
 /// Camera transform for a scene at a local frame.
 pub fn camera_transform(project: &Project, scene: &Scene, local: u32) -> Affine {
     let k = camera_at(scene, local);
     let (w, h) = (project.width as f32, project.height as f32);
-    let z = k.zoom.max(0.05);
+    let z = k.zoom.max(0.05) * view_scale(project);
     Affine::translate(w / 2.0, h / 2.0).then(&Affine::scale(z, z)).then(&Affine::translate(-k.x, -k.y))
 }
 
 fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Vec<Op>, Vec<ItemHit>) {
     let mut world = Vec::new();
-    let (w, h) = (project.width as f32, project.height as f32);
 
-    // Background
+    // Background, in design units like everything else in the world.
     if let Some(bg) = lib.backgrounds.get(&scene.background.preset) {
-        world.push(Op::group(Affine::scale(w / DESIGN_W, h / DESIGN_H), 1.0, bg.ops(&scene.background.colors)));
+        world.push(Op::group(Affine::IDENTITY, 1.0, bg.ops(&scene.background.colors)));
     } else {
         let c = scene.background.colors.first().copied().unwrap_or(Color::rgb(0xee, 0xef, 0xf4));
-        world.push(Op::fill(Path::rect(-w, -h, w * 3.0, h * 3.0), c));
+        world.push(Op::fill(Path::rect(-DESIGN_W, -DESIGN_H, DESIGN_W * 3.0, DESIGN_H * 3.0), c));
     }
 
     let cam = camera_transform(project, scene, local);
@@ -178,9 +185,10 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
             Effect::None => {}
             Effect::Fade => opacity *= t.max(0.0),
             Effect::Pop => scale *= if entering { Ease::Back.apply(t.max(0.0)) } else { e },
-            Effect::SlideLeft => x -= (1.0 - e) * (project.width as f32 * 0.8),
-            Effect::SlideRight => x += (1.0 - e) * (project.width as f32 * 0.8),
-            Effect::SlideUp => y += (1.0 - e) * (project.height as f32 * 0.9),
+            // Slide distances are in world units: most of the visible frame.
+            Effect::SlideLeft => x -= (1.0 - e) * (project.width as f32 / view_scale(project) * 0.8),
+            Effect::SlideRight => x += (1.0 - e) * (project.width as f32 / view_scale(project) * 0.8),
+            Effect::SlideUp => y += (1.0 - e) * (project.height as f32 / view_scale(project) * 0.9),
         }
     };
     apply(item.enter, since / EFFECT_FRAMES, true);

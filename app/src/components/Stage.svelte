@@ -16,23 +16,30 @@
   const sel = $derived(selectedPosed());
   const k = $derived(project ? box.w / project.width : 1); // css px per project px
 
-  // Fit a 16:9 (or project aspect) stage into the available space.
+  // Fit the stage, at the project's aspect (16:9, 9:16, square...), into the
+  // available space. Refits when the panel resizes or the project size changes.
+  let area = $state({ w: 0, h: 0 });
   $effect(() => {
     const ro = new ResizeObserver(() => {
-      if (!project) return;
       const r = wrap.getBoundingClientRect();
-      const aspect = project.width / project.height;
-      let w = r.width - 32;
-      let h = w / aspect;
-      if (h > r.height - 32) {
-        h = r.height - 32;
-        w = h * aspect;
-      }
-      box = { w: Math.max(160, Math.floor(w)), h: Math.max(90, Math.floor(h)) };
+      area = { w: r.width, h: r.height };
     });
     ro.observe(wrap);
     return () => ro.disconnect();
   });
+  $effect(() => {
+    if (!project || area.w <= 0) return;
+    const aspect = project.width / project.height;
+    let w = area.w - 32;
+    let h = w / aspect;
+    if (h > area.h - 32) {
+      h = area.h - 32;
+      w = h * aspect;
+    }
+    box = { w: Math.max(90, Math.floor(w)), h: Math.max(90, Math.floor(h)) };
+  });
+  /** Output px per world unit at zoom 1 (matches eval::view_scale): the world is laid out in 1280x720 design units. */
+  const viewScale = $derived(project ? Math.max(project.width / 1280, project.height / 720) : 1);
 
   // Redraw whenever anything visible changes.
   $effect(() => {
@@ -41,6 +48,7 @@
     void app.sceneIndex;
     void app.globalFrame;
     void box.w;
+    void box.h;
     if (!pending) {
       pending = true;
       requestAnimationFrame(draw);
@@ -69,14 +77,15 @@
   }
 
   // ------------------------------------------------------------ camera math
-  /** Camera at a local frame, from the engine (includes camera keyframes). */
+  /** Camera at a local frame, from the engine (includes camera keyframes).
+   *  `zoom` includes the view scale, so it is output px per world unit. */
   function camAt(s: Scene, f: number) {
     const i = app.project?.scenes.findIndex((x) => x.id === s.id) ?? -1;
     if (app.ready && i >= 0) {
       const [x, y, zoom] = eng().camera_at(i, f);
-      return { x, y, zoom };
+      return { x, y, zoom: zoom * viewScale };
     }
-    return s.camera.from;
+    return { ...s.camera.from, zoom: s.camera.from.zoom * viewScale };
   }
   /** Scene (world) coords -> stage css px. */
   function toScreen(x: number, y: number) {

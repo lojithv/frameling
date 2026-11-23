@@ -455,13 +455,13 @@
       }))}
       <h4>{scene.camera.moving ? "Start" : "View"}</h4>
       {@render slider("Zoom", scene.camera.from.zoom, 0.5, 3, 0.01, "cz0", (v) => editScene((s) => (s.camera.from.zoom = v), "cz0"), (v) => `${v.toFixed(2)}×`)}
-      {@render slider("Pan X", scene.camera.from.x, 0, project.width, 1, "cx0", (v) => editScene((s) => (s.camera.from.x = v), "cx0"))}
-      {@render slider("Pan Y", scene.camera.from.y, 0, project.height, 1, "cy0", (v) => editScene((s) => (s.camera.from.y = v), "cy0"))}
+      {@render slider("Pan X", scene.camera.from.x, 0, 1280, 1, "cx0", (v) => editScene((s) => (s.camera.from.x = v), "cx0"))}
+      {@render slider("Pan Y", scene.camera.from.y, 0, 720, 1, "cy0", (v) => editScene((s) => (s.camera.from.y = v), "cy0"))}
       {#if scene.camera.moving}
         <h4>End</h4>
         {@render slider("Zoom", scene.camera.to.zoom, 0.5, 3, 0.01, "cz1", (v) => editScene((s) => (s.camera.to.zoom = v), "cz1"), (v) => `${v.toFixed(2)}×`)}
-        {@render slider("Pan X", scene.camera.to.x, 0, project.width, 1, "cx1", (v) => editScene((s) => (s.camera.to.x = v), "cx1"))}
-        {@render slider("Pan Y", scene.camera.to.y, 0, project.height, 1, "cy1", (v) => editScene((s) => (s.camera.to.y = v), "cy1"))}
+        {@render slider("Pan X", scene.camera.to.x, 0, 1280, 1, "cx1", (v) => editScene((s) => (s.camera.to.x = v), "cx1"))}
+        {@render slider("Pan Y", scene.camera.to.y, 0, 720, 1, "cy1", (v) => editScene((s) => (s.camera.to.y = v), "cy1"))}
       {/if}
     </section>
     <section>
