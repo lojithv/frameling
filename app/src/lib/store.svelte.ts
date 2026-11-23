@@ -164,11 +164,14 @@ export function selectedItem(): Item | null {
 
 /** An item as it looks at the playhead: keyed values baked into its fields. */
 export function posedItem(item: Item, frame = app.frame): Item {
-  if (!item.tracks || Object.keys(item.tracks).length === 0) return item;
+  // Always a plain copy, never the live $state proxy: callers clone it
+  // (structuredClone throws on proxies, which broke dragging unkeyed items).
+  const plain = $state.snapshot(item) as Item;
+  if (!plain.tracks || Object.keys(plain.tracks).length === 0) return plain;
   try {
-    return JSON.parse(eng().posed_item(JSON.stringify($state.snapshot(item)), frame));
+    return JSON.parse(eng().posed_item(JSON.stringify(plain), frame));
   } catch {
-    return item;
+    return plain;
   }
 }
 
