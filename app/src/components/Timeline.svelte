@@ -140,13 +140,118 @@
     window.addEventListener("pointerup", up);
   }
 
+  // ------------------------------------------------------------ panel size
+  // The timeline's height is dragged from its top edge; it can also collapse
+  // to just the scene strip. Both are remembered.
+  const store = {
+    get(k: string) {
+      try {
+        return localStorage.getItem(k);
+      } catch {
+        return null;
+      }
+    },
+    set(k: string, v: string) {
+      try {
+        localStorage.setItem(k, v);
+      } catch {
+        /* private mode */
+      }
+    },
+  };
+  const MIN_H = 170;
+  const maxH = () => Math.max(MIN_H, window.innerHeight - 240);
+  let height = $state(Math.min(Number(store.get("frameling.timelineHeight")) || 290, maxH()));
+  let collapsed = $state(store.get("frameling.timelineCollapsed") === "1");
+  function setCollapsed(v: boolean) {
+    collapsed = v;
+    store.set("frameling.timelineCollapsed", v ? "1" : "0");
+  }
+  function resizeStart(ev: PointerEvent) {
+    ev.preventDefault();
+    const y0 = ev.clientY;
+    const h0 = collapsed ? MIN_H : height;
+    let moved = false;
+    const move = (e: PointerEvent) => {
+      const dy = y0 - e.clientY;
+      if (Math.abs(dy) > 3) moved = true;
+      if (!moved) return;
+      // Dragging a collapsed timeline up opens it; dragging it far down collapses it.
+      const h = h0 + dy;
+      if (h < MIN_H - 60) {
+        setCollapsed(true);
+      } else {
+        if (collapsed) setCollapsed(false);
+        height = Math.round(Math.min(maxH(), Math.max(MIN_H, h)));
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      store.set("frameling.timelineHeight", String(height));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  $effect(() => {
+    const fit = () => (height = Math.min(height, maxH()));
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  });
+
+  // ------------------------------------------------------------ zoom
+  // 1 = the whole scene fits; higher zooms in and the lanes scroll sideways.
+  let zoom = $state(1);
+  let tracksEl: HTMLDivElement | undefined = $state();
+  let viewW = $state(800); // width available to the lanes at zoom 1
+  const LABELS_W = 200;
+  $effect(() => {
+    if (!tracksEl) return;
+    const ro = new ResizeObserver(() => (viewW = Math.max(400, tracksEl!.clientWidth - LABELS_W - 12)));
+    ro.observe(tracksEl);
+    return () => ro.disconnect();
+  });
+  /** Up to about 300 px per second, at least 2x. */
+  const maxZoom = $derived(Math.max(2, Math.min(80, (300 * secs(dur)) / viewW)));
+  const laneW = $derived(viewW * zoom);
+
+  function setZoom(z: number, anchorClientX?: number) {
+    const el = tracksEl;
+    const nz = Math.min(maxZoom, Math.max(1, z));
+    if (!el || nz === zoom) return;
+    // Keep the time under the anchor (pointer, or the playhead) where it is.
+    const r = el.getBoundingClientRect();
+    const ax = anchorClientX !== undefined ? anchorClientX - r.left - LABELS_W : (app.frame / dur) * laneW - el.scrollLeft;
+    const t = (el.scrollLeft + ax) / laneW;
+    zoom = nz;
+    requestAnimationFrame(() => (el.scrollLeft = Math.max(0, t * viewW * nz - ax)));
+  }
+  function onWheel(e: WheelEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return; // plain wheel scrolls; Ctrl/Cmd (or pinch) zooms
+    e.preventDefault();
+    setZoom(zoom * Math.exp(-e.deltaY * 0.004), e.clientX);
+  }
+  // Keep the playhead on screen while playing or scrubbing past the edge.
+  $effect(() => {
+    const el = tracksEl;
+    const f = app.frame;
+    if (!el || zoom === 1) return;
+    const x = (f / dur) * laneW;
+    const left = el.scrollLeft;
+    const visible = el.clientWidth - LABELS_W - 12;
+    if (x < left || x > left + visible) el.scrollLeft = Math.max(0, x - (app.playing ? 40 : visible / 2));
+  });
+
   const ticks = $derived.by(() => {
     const s = secs(dur);
-    const step = s > 40 ? 5 : s > 15 ? 2 : 1;
+    // At least ~70 px between labels at the current zoom.
+    const pxPerSec = laneW / Math.max(s, 0.001);
+    const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find((st) => st * pxPerSec >= 70) ?? 300;
     const out: number[] = [];
-    for (let t = 0; t <= s; t += step) out.push(t);
+    for (let t = 0; t <= s + 1e-6; t += step) out.push(Math.round(t * 10) / 10);
     return out;
   });
+  const tickLabel = (t: number) => (t >= 60 ? `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, "0")}` : `${t}s`);
   const icon = (it: Item) => (it.kind.type === "character" ? "🧑" : it.kind.type === "prop" ? "🪴" : "💬");
   const clipLen = (c: AudioClip) => {
     const m = project?.media[c.media];
@@ -156,7 +261,17 @@
   const transIcon: Record<string, string> = { cut: "│", fade: "◐", fadeBlack: "●", slide: "⇢", zoom: "⊕" };
 </script>
 
-<section class="timeline panel">
+<section class="timeline panel" class:collapsed style:height={collapsed ? "auto" : `${height}px`}>
+  <div
+    class="grip"
+    onpointerdown={resizeStart}
+    ondblclick={() => setCollapsed(!collapsed)}
+    role="separator"
+    aria-orientation="horizontal"
+    aria-label="Resize timeline"
+    title="Drag to resize the timeline, double-click to collapse or expand"
+  ></div>
+  <div class="strip">
   <div class="scenes">
     {#each project?.scenes ?? [] as s, i (s.id)}
       {#if i > 0}
@@ -197,13 +312,22 @@
     {/each}
     <button class="add-scene" onclick={addScene} title="Add a scene after this one">＋<span>Scene</span></button>
   </div>
+    <button class="collapse" onclick={() => setCollapsed(!collapsed)} title={collapsed ? "Show the timeline tracks" : "Hide the timeline tracks"} aria-expanded={!collapsed}>
+      {collapsed ? "▴ Show tracks" : "▾ Hide tracks"}
+    </button>
+  </div>
 
-  {#if scene}
-    <div class="tracks">
+  {#if scene && !collapsed}
+    <div class="tracks" bind:this={tracksEl} onwheel={onWheel}>
       <div class="labels">
         <div class="lab head">
           <button class="playbtn" onclick={() => (app.playing ? stop() : play("scene"))} title="Play scene (Space)">{app.playing && app.playMode === "scene" ? "❚❚" : "▶"}</button>
           <span class="time">{fmtTime(app.frame)} / {fmtTime(dur)}</span>
+          <span class="zoom">
+            <button onclick={() => setZoom(zoom / 1.6)} disabled={zoom <= 1} title="Zoom out (Ctrl/⌘ + scroll)" aria-label="Zoom out">−</button>
+            <button onclick={() => setZoom(zoom * 1.6)} disabled={zoom >= maxZoom} title="Zoom in (Ctrl/⌘ + scroll)" aria-label="Zoom in">+</button>
+            <button onclick={() => setZoom(1)} disabled={zoom <= 1} title="Fit the whole scene" aria-label="Fit scene">⤢</button>
+          </span>
         </div>
         {#each [...scene.items].reverse() as it (it.id)}
           <button class="lab" class:sel={app.selected === it.id} onclick={() => (app.selected = it.id)}>
@@ -216,10 +340,10 @@
           <div class="lab audio" title={m?.source?.kind === "tts" ? m.source.text : m?.name}><span>{who ? "🗨" : "♪"}</span><span class="nm">{who ? `${who}: ` : ""}{m?.source?.kind === "tts" ? m.source.text : m?.name}</span></div>
         {/each}
       </div>
-      <div class="lanes">
+      <div class="lanes" style:width="{laneW}px">
         <div class="ruler" bind:this={ruler} onpointerdown={scrub} role="slider" aria-valuenow={app.frame} aria-label="Playhead" tabindex="0">
           {#each ticks as t}
-            <span class="tick" style:left={pct(frames(t))}>{t}s</span>
+            <span class="tick" style:left={pct(frames(t))}>{tickLabel(t)}</span>
           {/each}
         </div>
         {#each [...scene.items].reverse() as it (it.id)}
@@ -288,11 +412,72 @@
     box-shadow: 0 0 0 2px #ffcf5a;
   }
   .timeline {
+    position: relative;
     border-top: 1px solid var(--line);
     display: flex;
     flex-direction: column;
-    height: 290px;
-    min-height: 200px;
+    flex-shrink: 0;
+  }
+  .grip {
+    position: absolute;
+    top: -4px;
+    left: 0;
+    right: 0;
+    height: 8px;
+    cursor: ns-resize;
+    z-index: 5;
+  }
+  .grip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 2px;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 2px;
+    background: var(--line);
+    transition: background 0.15s;
+  }
+  .grip:hover::after {
+    background: var(--accent);
+  }
+  .strip {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .strip .scenes {
+    flex: 1;
+    min-width: 0;
+    border-bottom: none;
+  }
+  .collapse {
+    flex-shrink: 0;
+    margin: 0 12px 0 4px;
+    font-size: 11px;
+    padding: 5px 10px;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+  .collapsed .strip {
+    border-bottom: none;
+  }
+  .zoom {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+  }
+  .zoom button {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+  }
+  .zoom button:disabled {
+    opacity: 0.35;
   }
   .scenes {
     display: flex;
@@ -387,9 +572,16 @@
     min-height: 0;
   }
   .labels {
-    width: 180px;
+    width: 200px;
     flex-shrink: 0;
     border-right: 1px solid var(--line);
+    /* Stay put while the lanes scroll sideways. */
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--bg-1);
+    height: max-content;
+    min-height: 100%;
   }
   .lab {
     display: flex;
@@ -415,6 +607,8 @@
     white-space: nowrap;
   }
   .lab.head {
+    gap: 6px;
+    padding-right: 6px;
     height: 30px;
     position: sticky;
     top: 0;
@@ -431,12 +625,14 @@
     font-size: 11px;
   }
   .time {
+    white-space: nowrap;
+    font-size: 11px;
     font-variant-numeric: tabular-nums;
     color: var(--muted);
   }
   .lanes {
     position: relative;
-    flex: 1;
+    flex: none;
     min-width: 400px;
     margin-right: 12px;
   }
