@@ -14,6 +14,21 @@ against the legs and a slight lean into the walk.
   phase where both feet leave the ground.
 - **On the spot.** The Walk and Run actions play the same cycles in place.
 
+### Where and when a move starts
+
+With Auto-key on, move the playhead ahead and drag the character: it walks from where it was
+at its first frame to the new spot. To choose the start yourself:
+
+- **Stage**: the selected character's path shows a green **Start** point and a yellow **End**
+  point (and any points between). Drag a point to move it; click it to jump there.
+- **Timeline**: drag the character's keyframe diamonds to change when each point happens,
+  e.g. drag the first diamond to 3 s so the character stands still until 3 s, then walks.
+  A click without dragging jumps the playhead.
+- **Inspector → Movement**: a row per point with its time, X and Y. Type exact values, use ⤓ to
+  move a point to the playhead's time, ✕ to remove a point, or add a point at the playhead.
+
+Before the start and after the end the character stands still.
+
 ## Poses
 
 A pose is a set of joint values on the shared skeleton, so every pose fits every character:

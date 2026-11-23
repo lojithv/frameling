@@ -217,6 +217,7 @@ export type Command =
   | { op: "removeAudio"; scene: Id; id: Id }
   | { op: "addLine"; scene: Id; clipId: Id; media: Media; speaker: Id | null; start: number | null }
   | { op: "addParts"; parts: unknown[] }
+  | { op: "moveKeys"; scene: Id; item?: Id | null; from: number; to: number; paths?: string[] | null }
   | { op: "addPose"; pose: { id: string; name: string; category: string; tags: string[]; pose: unknown } }
   | { op: "addAction"; action: unknown }
   | { op: "autoKey"; scene: Id; item: Item; frame: number; auto?: boolean }

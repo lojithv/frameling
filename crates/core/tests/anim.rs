@@ -232,3 +232,26 @@ fn key_edits_undo_as_one_step_when_merged() {
     assert!(ed.undo());
     assert!(ed.project.scenes[0].item("maya").unwrap().tracks.is_empty());
 }
+
+#[test]
+fn move_keys_retimes_a_moment_on_every_track() {
+    use frameling_core::*;
+    let mut p = Project::default();
+    p.scenes[0].items.push(Item { id: "a".into(), kind: ItemKind::Character(CharacterItem::default()), ..Default::default() });
+    let mut ed = Editor::new(p);
+    for (path, v0, v1) in [("transform.x", 100.0, 900.0), ("transform.y", 600.0, 640.0)] {
+        ed.apply(&Command::SetKeys { scene: "s1".into(), item: Some("a".into()), path: path.into(), keys: vec![Key::new(0, v0), Key::new(60, v1)], replace: false }, None).unwrap();
+    }
+    // Stand still until frame 90, then walk: move the start keys to 90 (the end keys come along later).
+    ed.apply(&Command::MoveKeys { scene: "s1".into(), item: Some("a".into()), from: 60, to: 150, paths: None }, None).unwrap();
+    ed.apply(&Command::MoveKeys { scene: "s1".into(), item: Some("a".into()), from: 0, to: 90, paths: None }, None).unwrap();
+    let it = &ed.project.scenes[0].items[0];
+    let frames: Vec<u32> = it.tracks["transform.x"].keys.iter().map(|k| k.frame).collect();
+    assert_eq!(frames, vec![90, 150]);
+    assert_eq!(anim::item_xy(it, 45.0).0, 100.0, "holds the start point before it starts");
+    assert!(anim::item_transform(it, 45).moving == false && anim::item_transform(it, 120).moving);
+    // Only some paths; and a frame with no keys is an error.
+    ed.apply(&Command::MoveKeys { scene: "s1".into(), item: Some("a".into()), from: 150, to: 160, paths: Some(vec!["x".into()]) }, None).unwrap();
+    assert_eq!(ed.project.scenes[0].items[0].tracks["transform.y"].keys[1].frame, 150);
+    assert!(ed.apply(&Command::MoveKeys { scene: "s1".into(), item: Some("a".into()), from: 7, to: 8, paths: None }, None).is_err());
+}

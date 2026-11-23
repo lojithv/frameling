@@ -53,6 +53,16 @@ pub enum Command {
         from: Option<u32>,
         to: Option<u32>,
     },
+    /// Move the keys at frame `from` to frame `to` (retime a moment): every
+    /// track on the target, or only `paths`. A key already at `to` is replaced.
+    MoveKeys {
+        scene: Id,
+        item: Option<Id>,
+        from: u32,
+        to: u32,
+        #[serde(default)]
+        paths: Option<Vec<String>>,
+    },
     /// Change the interpolation of keys (all keys on the track if `frames` is None).
     SetInterpolation { scene: Id, item: Option<Id>, path: String, frames: Option<Vec<u32>>, interp: Interp },
     /// Define (or with `outfit` = None, remove) a named costume on a character,
@@ -298,6 +308,28 @@ impl Command {
                     if t.keys.is_empty() {
                         tracks.remove(&pa);
                     }
+                }
+            }
+            Command::MoveKeys { scene, item, from, to, paths } => {
+                let (tracks, _) = tracks_mut(p, scene, item.as_deref())?;
+                let wanted: Option<Vec<String>> = match paths {
+                    Some(ps) => Some(ps.iter().map(|pa| Channel::parse(pa).map(|c| c.path().to_string())).collect::<Result<_, _>>()?),
+                    None => None,
+                };
+                let mut moved = 0;
+                for (path, t) in tracks.iter_mut() {
+                    if wanted.as_ref().is_some_and(|w| !w.contains(path)) {
+                        continue;
+                    }
+                    if let Some(i) = t.keys.iter().position(|k| k.frame == *from) {
+                        let mut k = t.keys.remove(i);
+                        k.frame = *to;
+                        t.upsert([k]);
+                        moved += 1;
+                    }
+                }
+                if moved == 0 && from != to {
+                    return Err(format!("no keys at frame {from}"));
                 }
             }
             Command::SetInterpolation { scene, item, path, frames, interp } => {

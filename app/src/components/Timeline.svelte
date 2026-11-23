@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app, currentScene, run, updateItem, endGesture, fmtTime, secs, frames, keyFrames } from "../lib/store.svelte";
+  import type { Item as ItemT } from "../lib/types";
   import { newScene, uid } from "../lib/defaults";
   import { sceneThumb } from "../lib/thumbs";
   import { play, stop } from "../lib/playback";
@@ -75,6 +76,42 @@
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  /**
+   * Drag a keyframe diamond to retime that moment (every property keyed at it
+   * moves together), e.g. stand still until 3 s and only then start walking.
+   * A click without dragging jumps the playhead there.
+   */
+  function dragKey(ev: PointerEvent, it: ItemT, f0: number) {
+    ev.stopPropagation();
+    app.selected = it.id;
+    const all = keyFrames(it);
+    const i = all.indexOf(f0);
+    const lo = i > 0 ? all[i - 1] + 1 : 0;
+    const hi = i < all.length - 1 ? all[i + 1] - 1 : dur - 1;
+    const x0 = ev.clientX;
+    let cur = f0;
+    let moved = false;
+    const key = `key-${Date.now()}`;
+    const move = (e: PointerEvent) => {
+      if (!moved && Math.abs(e.clientX - x0) < 4) return;
+      moved = true;
+      const f = Math.min(hi, Math.max(lo, frameFromX(e.clientX)));
+      if (f === cur) return;
+      if (run({ op: "moveKeys", scene: scene!.id, item: it.id, from: cur, to: f }, key)) {
+        cur = f;
+        app.frame = f;
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) endGesture();
+      else app.frame = f0;
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -380,9 +417,9 @@
                 class:sel={app.selected === it.id}
                 class:here={f === app.frame}
                 style:left={pct(f)}
-                title="Keyframe at {fmtTime(f)}: jump here"
+                title="Keyframe at {fmtTime(f)}: click to jump here, drag to change when it happens"
                 aria-label="Keyframe at {fmtTime(f)}"
-                onpointerdown={(e) => { e.stopPropagation(); app.selected = it.id; app.frame = f; }}
+                onpointerdown={(e) => dragKey(e, it, f)}
               ></button>
             {/each}
           </div>
@@ -429,7 +466,7 @@
     border-radius: 1px;
     opacity: 0.7;
     z-index: 2;
-    cursor: pointer;
+    cursor: ew-resize;
   }
   .kf.sel {
     opacity: 1;

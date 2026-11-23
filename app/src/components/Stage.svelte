@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, eng, currentScene, selectedItem, selectedPosed, posedItem, updateItem, editItem, endGesture, run, toast } from "../lib/store.svelte";
+  import { app, eng, currentScene, selectedItem, selectedPosed, posedItem, updateItem, editItem, endGesture, run, toast, positionKeyFrames, setPositionKey, fmtTime } from "../lib/store.svelte";
   import { newCharacter, newProp, newText, CHARACTER_PRESETS } from "../lib/defaults";
   import type { Item, ItemHit, Scene } from "../lib/types";
   import { toImageData } from "../lib/thumbs";
@@ -212,6 +212,61 @@
     return { a, b };
   });
 
+  // ------------------------------------------------------------ movement path
+  // The selected item's keyed path, with a draggable point at each position
+  // key: the first one is where (and, on the timeline, when) the move starts.
+  const path = $derived.by(() => {
+    void app.rev;
+    void app.frame;
+    if (!raw || !scene || !project || app.playing) return null;
+    const keys = positionKeyFrames(raw);
+    if (keys.length < 2) return null;
+    const first = keys[0];
+    const last = keys[keys.length - 1];
+    const step = Math.max(1, Math.round((last - first) / 80));
+    const pts: string[] = [];
+    for (let f = first; f <= last; f += step) {
+      const p = posedItem(raw, f);
+      const s = toScreen(p.x, p.y);
+      pts.push(`${s.x.toFixed(1)},${s.y.toFixed(1)}`);
+    }
+    const end = posedItem(raw, last);
+    const se = toScreen(end.x, end.y);
+    pts.push(`${se.x.toFixed(1)},${se.y.toFixed(1)}`);
+    const dots = keys.map((f, i) => {
+      const p = posedItem(raw, f);
+      const s = toScreen(p.x, p.y);
+      return { f, x: s.x, y: s.y, wx: p.x, wy: p.y, label: i === 0 ? `Start ${fmtTime(f)}` : i === keys.length - 1 ? `End ${fmtTime(f)}` : fmtTime(f) };
+    });
+    return { points: pts.join(" "), dots };
+  });
+
+  function dragPoint(ev: PointerEvent, d: { f: number; wx: number; wy: number }) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    const el = ev.currentTarget as HTMLElement;
+    el.setPointerCapture(ev.pointerId);
+    const p0 = local(ev);
+    const key = `pt-${Date.now()}`;
+    let moved = false;
+    const move = (e: PointerEvent) => {
+      const p = local(e);
+      if (!moved && Math.hypot(p.x - p0.x, p.y - p0.y) < 3) return;
+      moved = true;
+      const zoom = camAt(scene!, app.frame).zoom;
+      const it = selectedItem();
+      if (it) setPositionKey(it, d.f, d.wx + (p.x - p0.x) / k / zoom, d.wy + (p.y - p0.y) / k / zoom, key);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      if (moved) endGesture();
+      else app.frame = d.f;
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
   function onDblClick() {
     if (sel?.kind.type === "text") document.getElementById("text-input")?.focus();
   }
@@ -243,6 +298,23 @@
     ></canvas>
 
     {#if !app.playing}
+      {#if path}
+        <svg class="motion" width={box.w} height={box.h}>
+          <polyline points={path.points} />
+        </svg>
+        {#each path.dots as d, i (d.f)}
+          <button
+            class="path-pt"
+            class:start={i === 0}
+            class:here={d.f === app.frame}
+            style:left="{d.x}px"
+            style:top="{d.y}px"
+            title="{d.label}: drag to move this point, click to go to {fmtTime(d.f)}. Change when it happens by dragging its diamond on the timeline."
+            aria-label="Movement point at {fmtTime(d.f)}"
+            onpointerdown={(e) => dragPoint(e, d)}
+          ><span>{d.label}</span></button>
+        {/each}
+      {/if}
       {#if motionMarker}
         <svg class="motion" width={box.w} height={box.h}>
           <line x1={motionMarker.a.x} y1={motionMarker.a.y} x2={motionMarker.b.x} y2={motionMarker.b.y} />
@@ -373,6 +445,45 @@
     stroke: #ffcf5a;
     stroke-width: 2;
     stroke-dasharray: 6 5;
+  }
+  .motion polyline {
+    fill: none;
+    stroke: #ffcf5a;
+    stroke-width: 2;
+    stroke-dasharray: 6 5;
+    opacity: 0.9;
+  }
+  .path-pt {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border-radius: 50%;
+    background: #ffcf5a;
+    border: 2px solid #fff;
+    cursor: move;
+    z-index: 3;
+  }
+  .path-pt.start {
+    background: #3fae6a;
+  }
+  .path-pt.here {
+    box-shadow: 0 0 0 3px rgba(255, 207, 90, 0.5);
+  }
+  .path-pt span {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(20, 23, 38, 0.8);
+    padding: 1px 5px;
+    border-radius: 4px;
+    pointer-events: none;
   }
   .motion .from {
     fill: #ffcf5a;

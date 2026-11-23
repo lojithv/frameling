@@ -189,6 +189,36 @@ export function editItem(item: Item, merge?: string) {
   if (s) run({ op: "autoKey", scene: s.id, item, frame: app.frame, auto: app.autoKey }, merge);
 }
 
+/** Frames with a position key (transform.x or transform.y), sorted. */
+export function positionKeyFrames(item: Item): number[] {
+  const set = new Set<number>();
+  for (const p of ["transform.x", "transform.y"]) for (const k of item.tracks?.[p]?.keys ?? []) set.add(k.frame);
+  return [...set].sort((a, b) => a - b);
+}
+
+/**
+ * Put a movement point (the item's position at `frame`) at (x, y): keys both
+ * x and y there. If one axis had no track yet, it gets keys at the other
+ * axis's frames holding its current value, so the rest of the path is unchanged.
+ */
+export function setPositionKey(item: Item, frame: number, x: number, y: number, merge?: string) {
+  const s = currentScene();
+  if (!s) return;
+  const cmds: Command[] = [];
+  const frames = positionKeyFrames(item);
+  for (const [path, v, other] of [["transform.x", x, "transform.y"], ["transform.y", y, "transform.x"]] as const) {
+    const has = !!item.tracks?.[path]?.keys?.length;
+    const keys = [{ frame, value: Math.round(v) }];
+    if (!has && item.tracks?.[other]?.keys?.length) {
+      for (const f of frames) if (f !== frame) keys.push({ frame: f, value: Math.round(path === "transform.x" ? posedItem(item, f).x : posedItem(item, f).y) });
+    }
+    // Keep the interpolation of a key already at this frame.
+    const old = item.tracks?.[path]?.keys?.find((k) => k.frame === frame);
+    cmds.push({ op: "setKeys", scene: s.id, item: item.id, path, keys: keys.map((k) => (k.frame === frame && old?.interp ? { ...k, interp: old.interp } : k)) });
+  }
+  run({ op: "batch", commands: cmds }, merge);
+}
+
 /** Every frame with a key on the item, sorted. */
 export function keyFrames(item: Item): number[] {
   const set = new Set<number>();

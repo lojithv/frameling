@@ -95,6 +95,7 @@ All times are **frames** (project fps, default 30). Positions are stage pixels o
 {"op":"setKeys","scene":"s1","item":"maya","path":"transform.x","keys":[{"frame":0,"value":300,"interp":"easeInOut"},{"frame":60,"value":900}],"replace":false}
 {"op":"deleteKeys","scene":"s1","item":"maya","path":"transform.x","frames":[60]}   // or "from"/"to"; no path = all tracks
 {"op":"setInterpolation","scene":"s1","item":"maya","path":"transform.x","frames":null,"interp":"bounce"}
+{"op":"moveKeys","scene":"s1","item":"maya","from":0,"to":90,"paths":["transform.x","transform.y"]}   // retime a moment (paths optional = every track)
 {"op":"defineOutfit","scene":"s1","item":"leo","name":"suit","outfit":{"top":"#222222","accessory":"tie"}}   // outfit null removes
 {"op":"batch","commands":[...]}
 ```

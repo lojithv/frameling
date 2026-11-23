@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, currentScene, selectedPosed, editItem, keyFrames, setAutoKey, updateScene, endGesture, run, secs, frames, fmtTime } from "../lib/store.svelte";
+  import { app, currentScene, selectedPosed, selectedItem, posedItem, positionKeyFrames, setPositionKey, toast, editItem, keyFrames, setAutoKey, updateScene, endGesture, run, secs, frames, fmtTime } from "../lib/store.svelte";
   import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
   import PosePanel from "./PosePanel.svelte";
@@ -104,6 +104,41 @@
   });
   const prevKey = $derived([...keys].reverse().find((f) => f < app.frame));
   const nextKey = $derived(keys.find((f) => f > app.frame));
+  // ------------------------------------------------------------ movement
+  const moves = $derived.by(() => {
+    void app.rev;
+    const raw = selectedItem();
+    if (!raw) return [];
+    const fs = positionKeyFrames(raw);
+    return fs.map((f, i) => {
+      const p = posedItem(raw, f);
+      return { f, x: Math.round(p.x), y: Math.round(p.y), label: i === 0 ? "Start" : i === fs.length - 1 ? "End" : `Point ${i + 1}` };
+    });
+  });
+  const POS = ["transform.x", "transform.y"];
+  function retime(from: number, secsValue: number) {
+    if (!scene || !item) return;
+    const to = Math.max(0, Math.min(scene.duration - 1, frames(secsValue)));
+    if (to === from) return;
+    if (moves.some((m) => m.f === to)) return toast(`There is already a movement point at ${fmtTime(to)}`, "error");
+    run({ op: "moveKeys", scene: scene.id, item: item.id, from, to, paths: POS.filter((p) => selectedItem()?.tracks?.[p]?.keys.some((k) => k.frame === from)) });
+  }
+  function setXY(f: number, x: number, y: number) {
+    const raw = selectedItem();
+    if (raw) setPositionKey(raw, f, x, y);
+  }
+  function removeMove(f: number) {
+    if (!scene || !item) return;
+    const raw = selectedItem();
+    run({ op: "batch", commands: POS.filter((p) => raw?.tracks?.[p]?.keys.some((k) => k.frame === f)).map((path) => ({ op: "deleteKeys" as const, scene: scene!.id, item: item!.id, path, frames: [f] })) });
+  }
+  function addMoveHere() {
+    const raw = selectedItem();
+    if (!raw) return;
+    const p = posedItem(raw, app.frame);
+    setPositionKey(raw, app.frame, p.x, p.y);
+  }
+
   function deleteKeysHere() {
     if (item && scene) run({ op: "deleteKeys", scene: scene.id, item: item.id, frames: [app.frame] });
   }
@@ -176,6 +211,32 @@
       {:else if app.autoKey}Move the playhead ahead and change position, size, rotation, expression or colours to animate.
       {:else}Auto-key is off: changes set the item's look for the whole scene.{/if}
     </p>
+    {#if moves.length >= 2}
+      <section class="moves">
+        <h3>Movement</h3>
+        <p class="keyhint">The {item.kind.type === "character" ? "character stands still" : "item stays"} before the start and after the end. Drag the points on the stage, or the diamonds on the timeline.</p>
+        <table>
+          <thead><tr><th></th><th>Time (s)</th><th>X</th><th>Y</th><th></th></tr></thead>
+          <tbody>
+            {#each moves as m (m.f)}
+              <tr class:here={m.f === app.frame}>
+                <td><button class="lbl" class:start={m.label === "Start"} onclick={() => (app.frame = m.f)} title="Go to this point">{m.label}</button></td>
+                <td><input type="number" min="0" step="0.1" value={secs(m.f).toFixed(2)} onchange={(e) => retime(m.f, +(e.target as HTMLInputElement).value)} aria-label="{m.label} time" /></td>
+                <td><input type="number" step="1" value={m.x} onchange={(e) => setXY(m.f, +(e.target as HTMLInputElement).value, m.y)} aria-label="{m.label} x" /></td>
+                <td><input type="number" step="1" value={m.y} onchange={(e) => setXY(m.f, m.x, +(e.target as HTMLInputElement).value)} aria-label="{m.label} y" /></td>
+                <td class="acts">
+                  <button title="Move this point to the playhead time ({fmtTime(app.frame)})" onclick={() => retime(m.f, secs(app.frame))}>⤓</button>
+                  {#if moves.length > 2}<button title="Remove this point" onclick={() => removeMove(m.f)}>✕</button>{/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if !moves.some((m) => m.f === app.frame)}
+          <button class="link" onclick={addMoveHere}>＋ Add a point at {fmtTime(app.frame)}</button>
+        {/if}
+      </section>
+    {/if}
 
     {#if kind.type === "character"}
       {@const ch = kind as CharacterKind}
@@ -520,6 +581,55 @@
   }
   .diamond.on {
     color: #ffcf5a;
+  }
+  .moves table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .moves th {
+    font-weight: 500;
+    color: var(--muted);
+    text-align: left;
+    padding: 0 3px 4px;
+  }
+  .moves td {
+    padding: 2px 3px;
+  }
+  .moves input {
+    width: 100%;
+    min-width: 0;
+    padding: 4px 5px;
+  }
+  .moves tr.here .lbl {
+    color: #ffcf5a;
+  }
+  .moves .lbl {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .moves .lbl.start::before {
+    content: "● ";
+    color: #3fae6a;
+  }
+  .moves .acts {
+    white-space: nowrap;
+  }
+  .moves .acts button {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    font-size: 11px;
+  }
+  .moves .link {
+    background: none;
+    border: none;
+    color: var(--accent-2);
+    font-size: 12px;
+    padding: 6px 0 0;
   }
   .keyhint {
     margin: 6px 14px 0;
