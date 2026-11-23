@@ -200,6 +200,7 @@
       <VoicePanel {item} />
       <section>
         <h3>Appearance</h3>
+        <button class="creator-btn" onclick={() => (app.creator = { itemId: item.id })}>✎ Open character creator</button>
         <div class="field"><span>Style</span>
           {@render seg(ch.look.style ?? "cartoon", [{ id: "cartoon", label: "Cartoon" }, { id: "stick", label: "Stick figure" }], (v) => editKind<CharacterKind>((k) => {
             k.look.style = v;
@@ -520,6 +521,14 @@
     font-size: 11px;
     line-height: 1.4;
     color: var(--muted);
+  }
+  .creator-btn {
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 8px;
+    font-weight: 600;
+    border-color: var(--accent);
+    color: var(--accent-2);
   }
   section {
     border-top: 1px solid var(--line);

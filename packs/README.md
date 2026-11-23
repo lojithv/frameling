@@ -11,9 +11,13 @@ Entries with the same `id` as built-in ones replace them.
   "license": "CC0-1.0",
   "props": [ { "id": "...", "name": "...", "category": "...", "colors": ["#hex"], "shapes": [ ... ] } ],
   "backgrounds": [ { "id": "...", "name": "...", "colors": ["#hex"], "shapes": [ ... ] } ],
-  "actions": [ { "id": "...", "name": "...", "duration": 1.0, "loop": true, "keys": [ { "t": 0, "pose": { ... } } ] } ]
+  "actions": [ { "id": "...", "name": "...", "duration": 1.0, "loop": true, "keys": [ { "t": 0, "pose": { ... } } ] } ],
+  "parts": [ { "id": "...", "name": "...", "category": "headwear", "anchor": "head", "colors": ["#hex"], "tags": [], "shapes": [ ... ] } ]
 }
 ```
+
+`parts` are character wearables for the character creator; the fields and anchor coordinates
+are in [docs/CHARACTERS.md](../docs/CHARACTERS.md#custom-part-packs).
 
 ## Coordinates
 

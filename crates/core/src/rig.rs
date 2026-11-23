@@ -6,7 +6,8 @@
 
 use crate::display::{Op, Path};
 use crate::geom::{Affine, Color};
-use crate::model::{Accessory, Build, Expression, FigureStyle, HairStyle, Look};
+use crate::model::{Accessory, BrowStyle, Build, EyeStyle, Expression, FacialHair, FigureStyle, HairStyle, Look, NoseStyle};
+use crate::pack::{Anchor, Layer};
 use crate::pack::ActionDef;
 use serde::{Deserialize, Serialize};
 
@@ -100,6 +101,21 @@ pub struct Face {
     pub mouth: u8,
 }
 
+/// A wearable part ready to draw: its ops (colours applied) and where it goes.
+#[derive(Clone, Debug)]
+pub struct Worn {
+    pub anchor: Anchor,
+    pub layer: Layer,
+    pub hides_hair: bool,
+    pub ops: Vec<Op>,
+}
+
+/// The worn parts for one anchor and layer, placed by `t`.
+pub(crate) fn worn_at(wear: &[Worn], anchor: Anchor, layer: Layer, t: Affine) -> Option<Op> {
+    let ops: Vec<Op> = wear.iter().filter(|w| w.anchor == anchor && w.layer == layer).flat_map(|w| w.ops.iter().cloned()).collect();
+    (!ops.is_empty()).then(|| Op::group(t, 1.0, ops))
+}
+
 const INK: Color = Color::INK;
 const MOUTH: Color = Color::rgb(0x5a, 0x1e, 0x2c);
 const TONGUE: Color = Color::rgb(0xe8, 0x6f, 0x7e);
@@ -136,9 +152,9 @@ fn limb(
 }
 
 /// Draw a character. Coordinates: feet at (0,0), about 330px tall.
-pub fn draw_character(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
+pub fn draw_character(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<Op> {
     if look.style == FigureStyle::Stick {
-        return crate::stick::draw_stick(look, pose, face);
+        return crate::stick::draw_stick(look, pose, face, wear);
     }
     let mut out = Vec::new();
     let width: f32 = match look.build {
@@ -169,6 +185,14 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
         .then(&Affine::rotate_deg(pose.head))
         .then(&Affine::translate(0.0, 0.0));
 
+    let body_sx = width / 88.0;
+    let neck_t = Affine::translate(0.0, top_y).then(&Affine::scale(body_sx, 1.0));
+    let torso_t = Affine::translate(0.0, top_y + 40.0).then(&Affine::scale(body_sx, 1.0));
+    // Back-layer parts (capes, backpacks, hat brims behind the head) first.
+    for (a, t) in [(Anchor::Neck, neck_t), (Anchor::Torso, torso_t), (Anchor::Head, head_t)] {
+        upper.extend(worn_at(wear, a, Layer::Back, t));
+    }
+
     if look.hair_style == HairStyle::Long {
         upper.push(Op::group(
             head_t,
@@ -197,22 +221,29 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
         upper.push(Op::fill(Path::round_rect(-8.0, top_y + 2.0, 16.0, 12.0, 3.0), look.accent.darken(0.2)));
     }
 
+    upper.extend(worn_at(wear, Anchor::Torso, Layer::Front, torso_t));
+
     // Arms
     let sh_y = top_y + 16.0;
     let sh_x = half - 9.0;
     for (side, s, e) in [(-1.0f32, pose.ls, pose.le), (1.0, pose.rs, pose.re)] {
         let hand = limb(&mut upper, (side * sh_x, sh_y), s, e, 42.0, 40.0, side, look.top, look.skin, 21.0);
+        let anchor = if side > 0.0 { Anchor::HandR } else { Anchor::HandL };
+        upper.extend(worn_at(wear, anchor, Layer::Back, Affine::translate(hand.0, hand.1)));
         upper.push(Op::fill(Path::circle(hand.0, hand.1, 11.0), look.skin));
         if side > 0.0 && pose.thumb > 0.5 {
             upper.push(Op::fill(Path::round_rect(hand.0 - 4.0, hand.1 - 25.0, 8.5, 20.0, 4.2), look.skin));
         }
+        upper.extend(worn_at(wear, anchor, Layer::Front, Affine::translate(hand.0, hand.1)));
     }
 
     // Neck
     upper.push(Op::fill(Path::round_rect(-11.0, top_y - 16.0, 22.0, 22.0, 6.0), look.skin.darken(0.12)));
+    upper.extend(worn_at(wear, Anchor::Neck, Layer::Front, neck_t));
 
     // ---- head -------------------------------------------------------------
-    draw_head(&mut head_ops, look, pose, face);
+    draw_head(&mut head_ops, look, pose, face, wear);
+    head_ops.extend(worn_at(wear, Anchor::Head, Layer::Front, Affine::IDENTITY));
     upper.push(Op::group(head_t, 1.0, head_ops));
 
     let lean_t = Affine::translate(0.0, hip_y + pose.bob)
@@ -227,7 +258,7 @@ pub fn draw_character(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
     out
 }
 
-fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face) {
+fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) {
     let skin = look.skin;
     let r = 50.0;
     // Bun sits behind the head
@@ -249,11 +280,14 @@ fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face) {
     }
 
     draw_eyes(out, look, pose, face);
+    draw_beard(out, look);
     draw_mouth(out, face);
-    // Nose
-    out.push(Op::fill(Path::ellipse(0.0, 12.0, 4.5, 3.5), skin.darken(0.14)));
+    draw_moustache(out, look);
+    draw_nose(out, look);
 
-    draw_hair(out, look);
+    if !wear.iter().any(|w| w.hides_hair) {
+        draw_hair(out, look);
+    }
 
     match look.accessory {
         Accessory::Glasses => {
@@ -307,11 +341,36 @@ fn draw_eyes(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face) {
             out.push(closed_arc(true));
         } else if face.blink {
             out.push(closed_arc(false));
+        } else if look.eyes == EyeStyle::Dots && face.expression != Surprised {
+            out.push(Op::fill(Path::ellipse(cx + px * 0.5, ey + py * 0.5, 4.8, 5.8), INK));
+            out.push(Op::fill(Path::circle(cx + px * 0.5 + 1.4, ey + py * 0.5 - 1.8, 1.3), Color::WHITE));
         } else {
-            let (rx, ry, pr) = if face.expression == Surprised { (10.5, 13.0, 4.5) } else { (8.5, 10.5, 5.5) };
+            let (rx, ry, pr) = match (face.expression, look.eyes) {
+                (Surprised, _) => (10.5, 13.0, 4.5),
+                (_, EyeStyle::Wide) => (10.0, 12.0, 5.5),
+                (_, EyeStyle::Narrow) => (9.5, 6.5, 4.2),
+                _ => (8.5, 10.5, 5.5),
+            };
             out.push(Op::fill(Path::ellipse(cx, ey, rx, ry), Color::WHITE));
-            out.push(Op::fill(Path::circle(cx + px, ey + py + 1.0, pr), INK));
-            out.push(Op::fill(Path::circle(cx + px + 1.8, ey + py - 1.5, 1.6), Color::WHITE));
+            let pyc = (py + 1.0).clamp(-ry + pr, ry - pr);
+            out.push(Op::fill(Path::circle(cx + px, ey + pyc, pr), INK));
+            out.push(Op::fill(Path::circle(cx + px + 1.8, ey + pyc - 2.5, 1.6), Color::WHITE));
+            if look.eyes == EyeStyle::Sleepy && face.expression != Surprised {
+                // Heavy lids: skin over the top half of the eye, with a lid line.
+                let mut lid = Path::new();
+                lid.move_to(cx - rx - 1.0, ey).cubic_to(cx - rx, ey - ry * 1.45, cx + rx, ey - ry * 1.45, cx + rx + 1.0, ey).close();
+                out.push(Op::fill(lid, look.skin));
+                out.push(Op::stroke(Path::polyline(&[(cx - rx - 1.0, ey), (cx + rx + 1.0, ey)], false), INK, 2.6));
+            }
+            if look.eyes == EyeStyle::Lashes {
+                // Two short lashes flicking out from the outer top corner.
+                for deg in [28.0f32, 55.0] {
+                    let a = deg.to_radians();
+                    let (dx, dy) = (a.cos() * side, -a.sin());
+                    let (x0, y0) = (cx + dx * rx, ey + dy * ry);
+                    out.push(Op::stroke(Path::polyline(&[(x0, y0), (x0 + dx * 6.5, y0 + dy * 5.0)], false), INK, 2.4));
+                }
+            }
         }
 
         // Brows: (inner y, outer y) relative offsets
@@ -325,11 +384,19 @@ fn draw_eyes(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face) {
             Confused => (-17.0, -17.0),
             _ => (-18.0, -19.0),
         };
-        out.push(Op::stroke(
-            Path::polyline(&[(side * 9.0, inner), (side * 27.0, outer)], false),
-            brow_c,
-            4.5,
-        ));
+        let brow_w = match look.brows {
+            BrowStyle::None => continue,
+            BrowStyle::Thin => 2.6,
+            BrowStyle::Thick => 7.5,
+            _ => 4.5,
+        };
+        if look.brows == BrowStyle::Arched {
+            let mut p = Path::new();
+            p.move_to(side * 8.0, inner + 1.0).quad_to(side * 17.0, inner.min(outer) - 7.0, side * 28.0, outer + 2.0);
+            out.push(Op::stroke(p, brow_c, 4.0));
+        } else {
+            out.push(Op::stroke(Path::polyline(&[(side * 9.0, inner), (side * 27.0, outer)], false), brow_c, brow_w));
+        }
     }
 }
 
@@ -409,6 +476,64 @@ fn draw_hair(out: &mut Vec<Op>, look: &Look) {
                 out.push(Op::fill(Path::circle(a.cos() * 48.0, a.sin() * 46.0 - 2.0, 15.0), c));
             }
         }
+    }
+}
+
+fn draw_nose(out: &mut Vec<Op>, look: &Look) {
+    let c = look.skin.darken(0.14);
+    match look.nose {
+        NoseStyle::Button => out.push(Op::fill(Path::ellipse(0.0, 12.0, 4.5, 3.5), c)),
+        NoseStyle::Dot => out.push(Op::fill(Path::circle(0.0, 12.0, 2.4), look.skin.darken(0.3))),
+        NoseStyle::Round => {
+            out.push(Op::fill(Path::circle(0.0, 10.0, 8.5), look.skin.darken(0.06)));
+            out.push(Op::fill(Path::circle(-2.5, 7.0, 2.5), look.skin.lighten(0.25)));
+        }
+        NoseStyle::Long => {
+            let mut p = Path::new();
+            p.move_to(-1.0, -4.0).quad_to(7.0, 10.0, 7.0, 15.0).quad_to(3.0, 18.0, -3.0, 15.0);
+            out.push(Op::stroke(p, look.skin.darken(0.22), 3.0));
+        }
+        NoseStyle::None => {}
+    }
+}
+
+/// Beards sit under the mouth; moustaches on top of it.
+fn draw_beard(out: &mut Vec<Op>, look: &Look) {
+    let c = look.hair;
+    match look.facial_hair {
+        FacialHair::Stubble => {
+            let mut p = Path::new();
+            p.move_to(-46.0, 10.0).cubic_to(-42.0, 54.0, 42.0, 54.0, 46.0, 10.0).cubic_to(30.0, 24.0, -30.0, 24.0, -46.0, 10.0).close();
+            out.push(Op::fill(p, c.with_alpha(0.2)));
+        }
+        FacialHair::Goatee => out.push(Op::fill(Path::round_rect(-10.0, 33.0, 20.0, 18.0, 8.0), c)),
+        FacialHair::Beard | FacialHair::FullBeard => {
+            let (drop, top) = if look.facial_hair == FacialHair::FullBeard { (74.0, -6.0) } else { (58.0, 6.0) };
+            let mut p = Path::new();
+            p.move_to(-50.0, top)
+                .cubic_to(-50.0, drop - 8.0, -22.0, drop, 0.0, drop)
+                .cubic_to(22.0, drop, 50.0, drop - 8.0, 50.0, top)
+                .cubic_to(42.0, 26.0, 26.0, 18.0, 0.0, 18.0)
+                .cubic_to(-26.0, 18.0, -42.0, 26.0, -50.0, top)
+                .close();
+            out.push(Op::fill(p, c));
+        }
+        _ => {}
+    }
+}
+
+fn draw_moustache(out: &mut Vec<Op>, look: &Look) {
+    if !matches!(look.facial_hair, FacialHair::Moustache | FacialHair::Goatee | FacialHair::Beard | FacialHair::FullBeard) {
+        return;
+    }
+    let c = look.hair;
+    for side in [-1.0f32, 1.0] {
+        let mut p = Path::new();
+        p.move_to(0.0, 17.0)
+            .cubic_to(side * 8.0, 13.0, side * 18.0, 14.0, side * 21.0, 22.0)
+            .cubic_to(side * 14.0, 21.0, side * 7.0, 23.0, 0.0, 22.0)
+            .close();
+        out.push(Op::fill(p, c));
     }
 }
 

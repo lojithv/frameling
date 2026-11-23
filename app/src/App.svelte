@@ -10,6 +10,7 @@
   import Inspector from "./components/Inspector.svelte";
   import Timeline from "./components/Timeline.svelte";
   import ExportDialog from "./components/ExportDialog.svelte";
+  import CharacterCreator from "./components/CharacterCreator.svelte";
 
   let exportOpen = $state(false);
   let error = $state<string | null>(null);
@@ -96,6 +97,9 @@
     </div>
   </div>
   <ExportDialog bind:open={exportOpen} />
+  {#if app.creator}
+    {#key app.creator}<CharacterCreator />{/key}
+  {/if}
 {/if}
 
 {#if app.toast}

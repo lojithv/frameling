@@ -69,6 +69,9 @@ pub enum Command {
         #[serde(default = "yes")]
         auto: bool,
     },
+    /// Copy character part definitions into the project (from an imported
+    /// part pack), so characters wearing them render anywhere.
+    AddParts { parts: Vec<crate::pack::PartDef> },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
 }
@@ -323,6 +326,12 @@ impl Command {
                 let s = scene_mut(p, scene)?;
                 let slot = s.items.iter_mut().find(|i| i.id == item.id).ok_or_else(|| format!("no item {:?}", item.id))?;
                 *slot = crate::anim::autokey_item(slot, item, *frame, *auto)?;
+            }
+            Command::AddParts { parts } => {
+                for d in parts {
+                    crate::pack::Part::compile(d)?;
+                    p.parts.insert(d.id.clone(), d.clone());
+                }
             }
             Command::Batch { commands } => {
                 for c in commands {

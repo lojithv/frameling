@@ -146,23 +146,27 @@ export async function exportVideo(s: ExportSettings) {
   }
 }
 
-export async function loadPackFile() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".json,application/json";
-  input.onchange = async () => {
-    const f = input.files?.[0];
-    if (!f) return;
-    try {
-      const id = eng().add_pack(await f.text());
-      app.catalog = JSON.parse(eng().catalog());
-      app.rev++;
-      toast(`Loaded pack "${id}"`);
-    } catch (e) {
-      toast(`Invalid pack: ${(e as Error).message ?? e}`, "error");
-    }
-  };
-  input.click();
+/** Load an asset pack (props, backgrounds, actions or character parts). Resolves once it is loaded. */
+export function loadPackFile(): Promise<void> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f) return resolve();
+      try {
+        const id = eng().add_pack(await f.text());
+        app.catalog = JSON.parse(eng().catalog());
+        app.rev++;
+        toast(`Loaded pack "${id}"`);
+      } catch (e) {
+        toast(`Invalid pack: ${(e as Error).message ?? e}`, "error");
+      }
+      resolve();
+    };
+    input.click();
+  });
 }
 
 // ---------------------------------------------------------------- live sync with agents

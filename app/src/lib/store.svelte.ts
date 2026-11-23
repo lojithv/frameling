@@ -2,7 +2,7 @@
 // copy of it for the UI plus view state (selection, playhead, panels).
 
 import init, { Engine } from "../engine/frameling.js";
-import type { Catalog, Command, Item, ItemHit, Project, Scene } from "./types";
+import type { Catalog, Command, Item, ItemHit, Look, Project, Scene } from "./types";
 
 let engine: Engine | null = null;
 
@@ -35,6 +35,8 @@ export const app = $state({
   exporting: null as null | { done: number; total: number; label: string },
   /** Changes made at the playhead become keyframes (see editItem). */
   autoKey: readAutoKey(),
+  /** The character creator: editing a character on stage, or making a new one. */
+  creator: null as null | { itemId: string | null; look?: Look; name?: string },
   /** Desktop: project files opened or saved lately, newest first. */
   recent: readRecent(),
 });

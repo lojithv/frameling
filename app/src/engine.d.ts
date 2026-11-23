@@ -30,5 +30,10 @@ declare module "*/engine/frameling.js" {
     render_background_preview(id: string, width: number, height: number): Uint8Array;
     item_kind(scene: number, id: string): string | undefined;
     posed_item(itemJson: string, frame: number): string;
+    parts_catalog(style?: string): string;
+    apply_part(lookJson: string, part: string, colorsJson: string): string;
+    selected_parts(lookJson: string): string;
+    randomize_look(lookJson: string, seed: number, locksJson: string): string;
+    part_defs(idsJson: string): string;
   }
 }

@@ -21,6 +21,8 @@ export interface Project {
   fps: number;
   scenes: Scene[];
   media: Record<Id, Media>;
+  /** Copies of pack parts the project's characters wear. */
+  parts?: Record<Id, unknown>;
 }
 
 export interface Scene {
@@ -67,6 +69,28 @@ export interface Look {
   style?: FigureStyle;
   /** Stick figures: wear a dress in the `accent` colour. */
   dress?: boolean;
+  /** Face parts (cartoon figures). */
+  eyes?: "round" | "dots" | "wide" | "sleepy" | "lashes" | "narrow";
+  brows?: "normal" | "thin" | "thick" | "arched" | "none";
+  nose?: "button" | "dot" | "round" | "long" | "none";
+  facialHair?: "none" | "stubble" | "moustache" | "goatee" | "beard" | "fullBeard";
+  /** Wearable parts from part packs, with their colour overrides. */
+  wear?: { part: string; colors?: string[] }[];
+}
+
+/** One entry of the character parts catalogue. */
+export interface PartInfo {
+  id: string;
+  name: string;
+  category: string;
+  /** "builtin", or the part pack it came from. */
+  pack: string;
+  tags: string[];
+  styles: string[];
+  /** Default colours of a pack part's own slots. */
+  colors: string[];
+  /** The look colour a built-in part uses ("hair", "accent"). */
+  colorField?: "skin" | "hair" | "top" | "bottom" | "shoes" | "accent";
 }
 
 export interface CharacterKind {
@@ -172,6 +196,7 @@ export type Command =
   | { op: "updateAudio"; scene: Id; clip: AudioClip }
   | { op: "removeAudio"; scene: Id; id: Id }
   | { op: "addLine"; scene: Id; clipId: Id; media: Media; speaker: Id | null; start: number | null }
+  | { op: "addParts"; parts: unknown[] }
   | { op: "autoKey"; scene: Id; item: Item; frame: number; auto?: boolean }
   | { op: "setKeys"; scene: Id; item?: Id | null; path: string; keys: Key[]; replace?: boolean }
   | { op: "deleteKeys"; scene: Id; item?: Id | null; path?: string | null; frames?: number[] | null; from?: number | null; to?: number | null }

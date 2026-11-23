@@ -219,7 +219,8 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
             let blink = ((local as f32 / fps) + phase).rem_euclid(3.6) < 0.12;
             let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth: level.unwrap_or(0) };
             let look = anim::resolve_look(c, &item.tracks, local);
-            draw_character(&look, &pose, &face)
+            let wear = crate::parts::worn(project, lib, &look);
+            draw_character(&look, &pose, &face, &wear)
         }
         ItemKind::Prop(p) => match lib.props.get(&p.prop) {
             Some(d) => d.ops(&p.colors),
@@ -348,4 +349,44 @@ pub fn audio_events(project: &Project) -> Vec<AudioEvent> {
         }
     }
     out
+}
+
+/// One item on its own, fitted into `width` x `height` on a transparent
+/// canvas: library thumbnails, the character creator and agent previews.
+/// `parts` are project parts the item may wear (pack parts not in `lib`).
+pub fn item_preview(lib: &Library, parts: &std::collections::BTreeMap<String, crate::pack::PartDef>, item: &Item, width: u32, height: u32, frame: u32) -> DisplayList {
+    let mut item = item.clone();
+    item.x = 0.0;
+    item.y = 0.0;
+    item.scale = 1.0;
+    item.start = 0;
+    item.end = None;
+    item.motion = None;
+    item.enter = crate::model::Effect::None;
+    item.exit = crate::model::Effect::None;
+    item.tracks.retain(|p, _| !p.starts_with("transform."));
+    if item.id.is_empty() {
+        item.id = "preview".into();
+    }
+    let mut p = Project { parts: parts.clone(), ..Project::default() };
+    let mut s = Scene::new("preview", "preview");
+    s.background.preset = String::new();
+    s.background.colors = vec![Color::rgba(0, 0, 0, 0)];
+    s.items.push(item);
+    p.scenes = vec![s];
+    let (dl, hits) = evaluate_scene(&p, lib, 0, frame);
+    let b = hits.first().map(|h| h.bounds).unwrap_or(Rect { x: -50.0, y: -100.0, w: 100.0, h: 100.0 });
+    let pad = 0.08;
+    let k = ((width as f32 * (1.0 - 2.0 * pad)) / b.w.max(1.0)).min((height as f32 * (1.0 - 2.0 * pad)) / b.h.max(1.0));
+    let fit = Affine::translate(width as f32 / 2.0, height as f32 / 2.0)
+        .then(&Affine::scale(k, k))
+        .then(&Affine::translate(-(b.x + b.w / 2.0), -(b.y + b.h / 2.0)));
+    // Drop the background op (first child of the camera group) for transparency.
+    let mut ops = dl.ops;
+    if let Some(Op::Group { children, .. }) = ops.first_mut() {
+        if !children.is_empty() {
+            children.remove(0);
+        }
+    }
+    DisplayList { width, height, background: None, ops: vec![Op::group(fit, 1.0, ops)] }
 }

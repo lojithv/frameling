@@ -1,0 +1,1093 @@
+{
+ "id": "parts",
+ "name": "Character parts",
+ "version": "1",
+ "license": "CC0-1.0",
+ "parts": [
+  {
+   "id": "headphones",
+   "name": "Headphones",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#2f3a56",
+    "#e84a5f"
+   ],
+   "tags": [
+    "music",
+    "podcast",
+    "radio",
+    "dj",
+    "gamer",
+    "listening",
+    "audio",
+    "host"
+   ],
+   "shapes": [
+    {
+     "t": "path",
+     "d": "M -50 -4 C -58 -80 58 -80 50 -4",
+     "stroke": "$0",
+     "sw": 9
+    },
+    {
+     "t": "rect",
+     "x": -64,
+     "y": -16,
+     "w": 20,
+     "h": 36,
+     "r": 9,
+     "fill": "$1"
+    },
+    {
+     "t": "rect",
+     "x": 44,
+     "y": -16,
+     "w": 20,
+     "h": 36,
+     "r": 9,
+     "fill": "$1"
+    },
+    {
+     "t": "rect",
+     "x": -58,
+     "y": -10,
+     "w": 8,
+     "h": 24,
+     "r": 4,
+     "fill": "$1d"
+    },
+    {
+     "t": "rect",
+     "x": 50,
+     "y": -10,
+     "w": 8,
+     "h": 24,
+     "r": 4,
+     "fill": "$1d"
+    }
+   ]
+  },
+  {
+   "id": "beanie",
+   "name": "Beanie",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#e84a5f",
+    "#f1f1ef"
+   ],
+   "tags": [
+    "winter",
+    "cold",
+    "knit",
+    "woolly",
+    "casual"
+   ],
+   "shapes": [
+    {
+     "t": "path",
+     "d": "M -54 -2 C -58 -76 58 -76 54 -2 Z",
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -57,
+     "y": -16,
+     "w": 114,
+     "h": 20,
+     "r": 9,
+     "fill": "$0d"
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": -70,
+     "r": 12,
+     "fill": "$1"
+    }
+   ],
+   "hidesHair": true
+  },
+  {
+   "id": "top-hat",
+   "name": "Top hat",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#1f2233",
+    "#e84a5f"
+   ],
+   "tags": [
+    "formal",
+    "magician",
+    "gentleman",
+    "fancy",
+    "victorian"
+   ],
+   "shapes": [
+    {
+     "t": "ellipse",
+     "cx": 0,
+     "cy": -40,
+     "rx": 64,
+     "ry": 10,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -36,
+     "y": -122,
+     "w": 72,
+     "h": 84,
+     "r": 4,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -36,
+     "y": -58,
+     "w": 72,
+     "h": 12,
+     "r": 0,
+     "fill": "$1"
+    }
+   ],
+   "hidesHair": true
+  },
+  {
+   "id": "chef-hat",
+   "name": "Chef hat",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#ffffff"
+   ],
+   "tags": [
+    "chef",
+    "cook",
+    "kitchen",
+    "restaurant",
+    "baker",
+    "food"
+   ],
+   "shapes": [
+    {
+     "t": "circle",
+     "cx": -28,
+     "cy": -80,
+     "r": 26,
+     "fill": "$0d"
+    },
+    {
+     "t": "circle",
+     "cx": 28,
+     "cy": -80,
+     "r": 26,
+     "fill": "$0d"
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": -96,
+     "r": 30,
+     "fill": "$0d"
+    },
+    {
+     "t": "circle",
+     "cx": -28,
+     "cy": -80,
+     "r": 24,
+     "fill": "$0"
+    },
+    {
+     "t": "circle",
+     "cx": 28,
+     "cy": -80,
+     "r": 24,
+     "fill": "$0"
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": -96,
+     "r": 28,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -46,
+     "y": -62,
+     "w": 92,
+     "h": 30,
+     "r": 6,
+     "fill": "$0"
+    },
+    {
+     "t": "line",
+     "x1": -46,
+     "y1": -34,
+     "x2": 46,
+     "y2": -34,
+     "stroke": "$0d",
+     "sw": 3
+    }
+   ],
+   "hidesHair": true
+  },
+  {
+   "id": "party-hat",
+   "name": "Party hat",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#9b5de5",
+    "#ffb703"
+   ],
+   "tags": [
+    "birthday",
+    "party",
+    "celebration",
+    "fun"
+   ],
+   "shapes": [
+    {
+     "t": "poly",
+     "points": [
+      [
+       -26,
+       -44
+      ],
+      [
+       26,
+       -44
+      ],
+      [
+       6,
+       -122
+      ]
+     ],
+     "fill": "$0"
+    },
+    {
+     "t": "circle",
+     "cx": -4,
+     "cy": -62,
+     "r": 5,
+     "fill": "$1"
+    },
+    {
+     "t": "circle",
+     "cx": 10,
+     "cy": -84,
+     "r": 4,
+     "fill": "$1"
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": -104,
+     "r": 3.5,
+     "fill": "$1"
+    },
+    {
+     "t": "circle",
+     "cx": 6,
+     "cy": -124,
+     "r": 9,
+     "fill": "$1"
+    }
+   ]
+  },
+  {
+   "id": "crown",
+   "name": "Crown",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#f4c430",
+    "#e84a5f"
+   ],
+   "tags": [
+    "king",
+    "queen",
+    "royal",
+    "prince",
+    "princess",
+    "fantasy"
+   ],
+   "shapes": [
+    {
+     "t": "poly",
+     "points": [
+      [
+       -40,
+       -40
+      ],
+      [
+       -46,
+       -92
+      ],
+      [
+       -22,
+       -66
+      ],
+      [
+       0,
+       -100
+      ],
+      [
+       22,
+       -66
+      ],
+      [
+       46,
+       -92
+      ],
+      [
+       40,
+       -40
+      ]
+     ],
+     "fill": "$0",
+     "stroke": "$0d",
+     "sw": 2
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": -58,
+     "r": 6,
+     "fill": "$1"
+    },
+    {
+     "t": "circle",
+     "cx": -26,
+     "cy": -54,
+     "r": 4,
+     "fill": "$1"
+    },
+    {
+     "t": "circle",
+     "cx": 26,
+     "cy": -54,
+     "r": 4,
+     "fill": "$1"
+    }
+   ]
+  },
+  {
+   "id": "sun-hat",
+   "name": "Wide-brim hat",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#e8c27a",
+    "#5a3825"
+   ],
+   "tags": [
+    "summer",
+    "beach",
+    "farmer",
+    "cowboy",
+    "explorer",
+    "gardener",
+    "sun"
+   ],
+   "shapes": [
+    {
+     "t": "ellipse",
+     "cx": 0,
+     "cy": -30,
+     "rx": 86,
+     "ry": 15,
+     "fill": "$0d"
+    },
+    {
+     "t": "path",
+     "d": "M -46 -30 C -50 -92 50 -92 46 -30 Z",
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -46,
+     "y": -44,
+     "w": 92,
+     "h": 12,
+     "r": 0,
+     "fill": "$1"
+    },
+    {
+     "t": "ellipse",
+     "cx": 0,
+     "cy": -32,
+     "rx": 84,
+     "ry": 12,
+     "fill": "$0"
+    }
+   ],
+   "hidesHair": true
+  },
+  {
+   "id": "headband",
+   "name": "Headband",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#4f7cff"
+   ],
+   "tags": [
+    "sport",
+    "gym",
+    "runner",
+    "retro",
+    "tennis"
+   ],
+   "shapes": [
+    {
+     "t": "path",
+     "d": "M -51 -14 C -48 -54 48 -54 51 -14",
+     "stroke": "$0",
+     "sw": 11
+    }
+   ]
+  },
+  {
+   "id": "hard-hat",
+   "name": "Hard hat",
+   "category": "headwear",
+   "anchor": "head",
+   "colors": [
+    "#ffb703"
+   ],
+   "tags": [
+    "builder",
+    "construction",
+    "worker",
+    "engineer",
+    "safety"
+   ],
+   "shapes": [
+    {
+     "t": "path",
+     "d": "M -50 -16 C -52 -84 52 -84 50 -16 Z",
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -62,
+     "y": -22,
+     "w": 124,
+     "h": 12,
+     "r": 6,
+     "fill": "$0d"
+    },
+    {
+     "t": "rect",
+     "x": -6,
+     "y": -80,
+     "w": 12,
+     "h": 60,
+     "r": 5,
+     "fill": "$0l"
+    }
+   ],
+   "hidesHair": true
+  },
+  {
+   "id": "sunglasses",
+   "name": "Sunglasses",
+   "category": "eyewear",
+   "anchor": "head",
+   "colors": [
+    "#1f2233"
+   ],
+   "tags": [
+    "cool",
+    "summer",
+    "spy",
+    "beach",
+    "sunny"
+   ],
+   "shapes": [
+    {
+     "t": "rect",
+     "x": -36,
+     "y": -13,
+     "w": 32,
+     "h": 22,
+     "r": 8,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": 4,
+     "y": -13,
+     "w": 32,
+     "h": 22,
+     "r": 8,
+     "fill": "$0"
+    },
+    {
+     "t": "line",
+     "x1": -4,
+     "y1": -6,
+     "x2": 4,
+     "y2": -6,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "line",
+     "x1": -36,
+     "y1": -8,
+     "x2": -50,
+     "y2": -12,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "line",
+     "x1": 36,
+     "y1": -8,
+     "x2": 50,
+     "y2": -12,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "rect",
+     "x": -30,
+     "y": -9,
+     "w": 8,
+     "h": 4,
+     "r": 2,
+     "fill": "#ffffff",
+     "opacity": 0.5
+    }
+   ]
+  },
+  {
+   "id": "round-glasses",
+   "name": "Round glasses",
+   "category": "eyewear",
+   "anchor": "head",
+   "colors": [
+    "#b07850"
+   ],
+   "tags": [
+    "smart",
+    "vintage",
+    "professor",
+    "reading",
+    "writer",
+    "scientist"
+   ],
+   "shapes": [
+    {
+     "t": "circle",
+     "cx": -18,
+     "cy": -2,
+     "r": 13,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "circle",
+     "cx": 18,
+     "cy": -2,
+     "r": 13,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "path",
+     "d": "M -5 -4 Q 0 -9 5 -4",
+     "stroke": "$0",
+     "sw": 3
+    }
+   ]
+  },
+  {
+   "id": "eye-patch",
+   "name": "Eye patch",
+   "category": "eyewear",
+   "anchor": "head",
+   "colors": [
+    "#1f2233"
+   ],
+   "tags": [
+    "pirate",
+    "adventure"
+   ],
+   "shapes": [
+    {
+     "t": "line",
+     "x1": -50,
+     "y1": -20,
+     "x2": 50,
+     "y2": -24,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "ellipse",
+     "cx": -18,
+     "cy": -1,
+     "rx": 13,
+     "ry": 12,
+     "fill": "$0"
+    }
+   ]
+  },
+  {
+   "id": "hoop-earrings",
+   "name": "Hoop earrings",
+   "category": "earrings",
+   "anchor": "head",
+   "colors": [
+    "#f4c430"
+   ],
+   "tags": [
+    "jewellery",
+    "fashion",
+    "gold"
+   ],
+   "shapes": [
+    {
+     "t": "circle",
+     "cx": -51,
+     "cy": 22,
+     "r": 8,
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "circle",
+     "cx": 51,
+     "cy": 22,
+     "r": 8,
+     "stroke": "$0",
+     "sw": 3
+    }
+   ]
+  },
+  {
+   "id": "stud-earrings",
+   "name": "Stud earrings",
+   "category": "earrings",
+   "anchor": "head",
+   "colors": [
+    "#7fd8ff"
+   ],
+   "tags": [
+    "jewellery",
+    "small",
+    "sparkle"
+   ],
+   "shapes": [
+    {
+     "t": "circle",
+     "cx": -49,
+     "cy": 15,
+     "r": 4.5,
+     "fill": "$0"
+    },
+    {
+     "t": "circle",
+     "cx": 49,
+     "cy": 15,
+     "r": 4.5,
+     "fill": "$0"
+    }
+   ]
+  },
+  {
+   "id": "scarf",
+   "name": "Scarf",
+   "category": "neckwear",
+   "anchor": "neck",
+   "colors": [
+    "#e84a5f",
+    "#f1f1ef"
+   ],
+   "tags": [
+    "winter",
+    "cold",
+    "cosy"
+   ],
+   "shapes": [
+    {
+     "t": "rect",
+     "x": -32,
+     "y": -12,
+     "w": 64,
+     "h": 22,
+     "r": 11,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": 8,
+     "y": 2,
+     "w": 18,
+     "h": 56,
+     "r": 7,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": 8,
+     "y": 40,
+     "w": 18,
+     "h": 6,
+     "r": 0,
+     "fill": "$1"
+    },
+    {
+     "t": "rect",
+     "x": 8,
+     "y": 50,
+     "w": 18,
+     "h": 4,
+     "r": 0,
+     "fill": "$1"
+    }
+   ]
+  },
+  {
+   "id": "bow-tie",
+   "name": "Bow tie",
+   "category": "neckwear",
+   "anchor": "neck",
+   "colors": [
+    "#e84a5f"
+   ],
+   "tags": [
+    "formal",
+    "waiter",
+    "magician",
+    "fancy",
+    "party"
+   ],
+   "shapes": [
+    {
+     "t": "poly",
+     "points": [
+      [
+       0,
+       8
+      ],
+      [
+       -22,
+       -4
+      ],
+      [
+       -22,
+       20
+      ]
+     ],
+     "fill": "$0"
+    },
+    {
+     "t": "poly",
+     "points": [
+      [
+       0,
+       8
+      ],
+      [
+       22,
+       -4
+      ],
+      [
+       22,
+       20
+      ]
+     ],
+     "fill": "$0"
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": 8,
+     "r": 6,
+     "fill": "$0d"
+    }
+   ]
+  },
+  {
+   "id": "necklace",
+   "name": "Necklace",
+   "category": "neckwear",
+   "anchor": "neck",
+   "colors": [
+    "#f4c430",
+    "#4f7cff"
+   ],
+   "tags": [
+    "jewellery",
+    "pendant",
+    "fashion"
+   ],
+   "shapes": [
+    {
+     "t": "path",
+     "d": "M -24 2 Q 0 40 24 2",
+     "stroke": "$0",
+     "sw": 3
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": 22,
+     "r": 6,
+     "fill": "$1"
+    }
+   ]
+  },
+  {
+   "id": "cape",
+   "name": "Cape",
+   "category": "back",
+   "anchor": "neck",
+   "colors": [
+    "#e84a5f"
+   ],
+   "tags": [
+    "hero",
+    "superhero",
+    "vampire",
+    "fantasy",
+    "king"
+   ],
+   "shapes": [
+    {
+     "t": "path",
+     "d": "M -56 -2 L 56 -2 L 84 196 Q 0 212 -84 196 Z",
+     "fill": "$0"
+    },
+    {
+     "t": "path",
+     "d": "M -56 -2 L 56 -2 L 60 20 L -60 20 Z",
+     "fill": "$0d"
+    }
+   ],
+   "layer": "back"
+  },
+  {
+   "id": "microphone",
+   "name": "Microphone",
+   "category": "held",
+   "anchor": "handR",
+   "colors": [
+    "#9aa0a6"
+   ],
+   "tags": [
+    "podcast",
+    "singer",
+    "host",
+    "interview",
+    "reporter",
+    "presenter",
+    "karaoke"
+   ],
+   "shapes": [
+    {
+     "t": "rect",
+     "x": -4,
+     "y": -4,
+     "w": 8,
+     "h": 30,
+     "r": 3,
+     "fill": "#2d2d2d"
+    },
+    {
+     "t": "circle",
+     "cx": 0,
+     "cy": -14,
+     "r": 11,
+     "fill": "$0"
+    },
+    {
+     "t": "path",
+     "d": "M -9 -18 L 9 -18 M -10 -12 L 10 -12",
+     "stroke": "$0d",
+     "sw": 1.5
+    }
+   ]
+  },
+  {
+   "id": "coffee-cup",
+   "name": "Coffee cup",
+   "category": "held",
+   "anchor": "handR",
+   "colors": [
+    "#f1f1ef",
+    "#8b5a2b"
+   ],
+   "tags": [
+    "coffee",
+    "morning",
+    "office",
+    "cafe",
+    "drink"
+   ],
+   "shapes": [
+    {
+     "t": "rect",
+     "x": -10,
+     "y": -24,
+     "w": 20,
+     "h": 26,
+     "r": 3,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -10,
+     "y": -16,
+     "w": 20,
+     "h": 9,
+     "r": 0,
+     "fill": "$1"
+    },
+    {
+     "t": "rect",
+     "x": -11,
+     "y": -28,
+     "w": 22,
+     "h": 5,
+     "r": 2,
+     "fill": "$0d"
+    }
+   ]
+  },
+  {
+   "id": "book",
+   "name": "Book",
+   "category": "held",
+   "anchor": "handR",
+   "colors": [
+    "#4f7cff"
+   ],
+   "tags": [
+    "reading",
+    "student",
+    "teacher",
+    "library",
+    "school"
+   ],
+   "shapes": [
+    {
+     "t": "rect",
+     "x": -16,
+     "y": -30,
+     "w": 32,
+     "h": 40,
+     "r": 2,
+     "fill": "$0"
+    },
+    {
+     "t": "rect",
+     "x": -13,
+     "y": -27,
+     "w": 4,
+     "h": 34,
+     "r": 0,
+     "fill": "$0d"
+    },
+    {
+     "t": "line",
+     "x1": -4,
+     "y1": -18,
+     "x2": 10,
+     "y2": -18,
+     "stroke": "#f1f1ef",
+     "sw": 2
+    },
+    {
+     "t": "line",
+     "x1": -4,
+     "y1": -12,
+     "x2": 8,
+     "y2": -12,
+     "stroke": "#f1f1ef",
+     "sw": 2
+    }
+   ]
+  },
+  {
+   "id": "magic-wand",
+   "name": "Magic wand",
+   "category": "held",
+   "anchor": "handR",
+   "colors": [
+    "#ffb703"
+   ],
+   "tags": [
+    "wizard",
+    "magic",
+    "fairy",
+    "fantasy"
+   ],
+   "shapes": [
+    {
+     "t": "line",
+     "x1": 0,
+     "y1": 6,
+     "x2": 0,
+     "y2": -48,
+     "stroke": "#1f2233",
+     "sw": 4
+    },
+    {
+     "t": "poly",
+     "points": [
+      [
+       0,
+       -68
+      ],
+      [
+       5,
+       -56
+      ],
+      [
+       18,
+       -56
+      ],
+      [
+       8,
+       -48
+      ],
+      [
+       12,
+       -36
+      ],
+      [
+       0,
+       -43
+      ],
+      [
+       -12,
+       -36
+      ],
+      [
+       -8,
+       -48
+      ],
+      [
+       -18,
+       -56
+      ],
+      [
+       -5,
+       -56
+      ]
+     ],
+     "fill": "$0"
+    }
+   ]
+  }
+ ]
+}

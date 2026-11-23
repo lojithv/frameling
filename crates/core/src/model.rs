@@ -27,6 +27,10 @@ pub struct Project {
     pub scenes: Vec<Scene>,
     /// Imported media (audio). Shared via `Arc` so undo snapshots stay cheap.
     pub media: BTreeMap<Id, Arc<Media>>,
+    /// Character parts from imported part packs that this project uses, copied
+    /// in so the file renders anywhere (built-in parts are not stored).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parts: BTreeMap<Id, crate::pack::PartDef>,
 }
 
 impl Default for Project {
@@ -40,6 +44,7 @@ impl Default for Project {
             fps: 30,
             scenes: vec![Scene::new("s1", "Scene 1")],
             media: BTreeMap::new(),
+            parts: BTreeMap::new(),
         }
     }
 }
@@ -363,6 +368,78 @@ pub struct Look {
     pub style: FigureStyle,
     /// Wear a dress (stick figures): `accent` is its colour.
     pub dress: bool,
+    /// Face parts (cartoon figures; stick figures use their own simple face).
+    #[serde(skip_serializing_if = "is_default")]
+    pub eyes: EyeStyle,
+    #[serde(skip_serializing_if = "is_default")]
+    pub brows: BrowStyle,
+    #[serde(skip_serializing_if = "is_default")]
+    pub nose: NoseStyle,
+    #[serde(skip_serializing_if = "is_default")]
+    pub facial_hair: FacialHair,
+    /// Wearable parts from part packs (hats, headphones, earrings, ...), drawn
+    /// in order on top of the figure at their part's anchor.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub wear: Vec<Wear>,
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
+/// One wearable part on a character, with its colour slot overrides.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Wear {
+    pub part: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub colors: Vec<Color>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum EyeStyle {
+    #[default]
+    Round,
+    Dots,
+    Wide,
+    Sleepy,
+    Lashes,
+    Narrow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowStyle {
+    #[default]
+    Normal,
+    Thin,
+    Thick,
+    Arched,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum NoseStyle {
+    #[default]
+    Button,
+    Dot,
+    Round,
+    Long,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum FacialHair {
+    #[default]
+    None,
+    Stubble,
+    Moustache,
+    Goatee,
+    Beard,
+    FullBeard,
 }
 
 /// A partial look: the fields an outfit (costume) changes. Unset fields keep
@@ -428,6 +505,11 @@ impl Default for Look {
             accent: Color::rgb(0xe8, 0x4a, 0x5f),
             style: FigureStyle::Cartoon,
             dress: false,
+            eyes: EyeStyle::Round,
+            brows: BrowStyle::Normal,
+            nose: NoseStyle::Button,
+            facial_hair: FacialHair::None,
+            wear: Vec::new(),
         }
     }
 }
@@ -447,6 +529,7 @@ impl Look {
             accent: Color::rgb(0xe8, 0x4a, 0x5f),
             style: FigureStyle::Stick,
             dress: female,
+            ..Look::default()
         }
     }
 }

@@ -13,6 +13,7 @@ pub mod eval;
 pub mod geom;
 pub mod model;
 pub mod pack;
+pub mod parts;
 pub mod rig;
 pub mod stick;
 pub mod text;

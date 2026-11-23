@@ -5,7 +5,7 @@
 //! app and the web app use this exact same module.
 
 use frameling_core::{
-    audio_events, demo, eval, evaluate, Command, DisplayList, Editor, Item, ItemKind, Library, Project, Scene,
+    audio_events, demo, eval, evaluate, Command, Editor, Item, ItemKind, Library, Project, Scene,
 };
 use wasm_bindgen::prelude::*;
 
@@ -165,46 +165,45 @@ impl Engine {
     /// Render a single item (JSON) centred on a transparent canvas: library
     /// thumbnails and drag previews.
     pub fn render_item_preview(&self, item_json: &str, width: u32, height: u32, frame: u32) -> Result<Vec<u8>, JsError> {
-        let mut item: Item = serde_json::from_str(item_json).map_err(err)?;
-        item.x = 0.0;
-        item.y = 0.0;
-        item.scale = 1.0;
-        item.start = 0;
-        item.end = None;
-        item.motion = None;
-        if item.id.is_empty() {
-            item.id = "preview".into();
-        }
-        let mut p = Project::default();
-        let mut s = Scene::new("preview", "preview");
-        s.background.preset = String::new();
-        s.background.colors = vec![frameling_core::Color::rgba(0, 0, 0, 0)];
-        s.items.push(item);
-        p.scenes = vec![s];
-        let (dl, hits) = eval::evaluate_scene(&p, &self.lib, 0, frame);
-        let b = hits.first().map(|h| h.bounds).unwrap_or(frameling_core::Rect { x: -50.0, y: -100.0, w: 100.0, h: 100.0 });
-        // The scene camera centres (640,360) on screen; undo that and fit the bounds.
-        let pad = 0.08;
-        let s = ((width as f32 * (1.0 - 2.0 * pad)) / b.w.max(1.0)).min((height as f32 * (1.0 - 2.0 * pad)) / b.h.max(1.0));
-        let cx = b.x + b.w / 2.0;
-        let cy = b.y + b.h / 2.0;
-        let fit = frameling_core::Affine::translate(width as f32 / 2.0, height as f32 / 2.0)
-            .then(&frameling_core::Affine::scale(s, s))
-            .then(&frameling_core::Affine::translate(-cx, -cy));
-        // Drop the background op (first child of the camera group) for transparency.
-        let mut ops = dl.ops;
-        if let Some(frameling_core::Op::Group { children, .. }) = ops.first_mut() {
-            if !children.is_empty() {
-                children.remove(0);
-            }
-        }
-        let fitted = DisplayList {
-            width,
-            height,
-            background: None,
-            ops: vec![frameling_core::Op::group(fit, 1.0, ops)],
-        };
-        Ok(unpremultiply(frameling_render::render(&fitted, width, height)))
+        let item: Item = serde_json::from_str(item_json).map_err(err)?;
+        let dl = eval::item_preview(&self.lib, &self.editor.project.parts, &item, width, height, frame);
+        Ok(unpremultiply(frameling_render::render(&dl, width, height)))
+    }
+
+    /// Parts catalogue (built-in and pack parts) as JSON; `style` filters.
+    pub fn parts_catalog(&self, style: Option<String>) -> String {
+        serde_json::to_string(&frameling_core::parts::catalog(&self.lib, style.as_deref())).unwrap_or_default()
+    }
+
+    /// Put a part on a look (JSON in, JSON out).
+    pub fn apply_part(&self, look_json: &str, part: &str, colors_json: &str) -> Result<String, JsError> {
+        let mut look: frameling_core::Look = serde_json::from_str(look_json).map_err(err)?;
+        let colors: Vec<frameling_core::Color> = serde_json::from_str(colors_json).unwrap_or_default();
+        frameling_core::parts::apply(&mut look, &self.lib, Some(&self.editor.project), part, &colors).map_err(err)?;
+        Ok(serde_json::to_string(&look).unwrap())
+    }
+
+    /// Which part a look uses per category, as JSON {category: partId}.
+    pub fn selected_parts(&self, look_json: &str) -> Result<String, JsError> {
+        let look: frameling_core::Look = serde_json::from_str(look_json).map_err(err)?;
+        Ok(serde_json::to_string(&frameling_core::parts::selected(&look, &self.lib, Some(&self.editor.project))).unwrap())
+    }
+
+    /// A random look in the same style; `locks` is a JSON list of categories to keep.
+    pub fn randomize_look(&self, look_json: &str, seed: f64, locks_json: &str) -> Result<String, JsError> {
+        let look: frameling_core::Look = serde_json::from_str(look_json).map_err(err)?;
+        let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
+        let out = frameling_core::parts::randomize(&look, &self.lib, Some(&self.editor.project), seed as u64, &locks);
+        Ok(serde_json::to_string(&out).unwrap())
+    }
+
+    /// Definitions of pack parts that are not built in (to copy into the
+    /// project with the addParts command). `ids_json` is a list of part ids.
+    pub fn part_defs(&self, ids_json: &str) -> String {
+        let ids: Vec<String> = serde_json::from_str(ids_json).unwrap_or_default();
+        let builtin = &frameling_core::Library::builtin().parts;
+        let defs: Vec<_> = ids.iter().filter(|i| !builtin.contains_key(*i)).filter_map(|i| self.lib.parts.get(i).map(|p| p.def.clone())).collect();
+        serde_json::to_string(&defs).unwrap()
     }
 
     /// Render a background preset as a thumbnail.

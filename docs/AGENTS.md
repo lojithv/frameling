@@ -38,7 +38,18 @@ in the desktop app to watch the agent work.
 | `list_tracks` | Show an item's (or scene's) tracks, keys, outfits and the path grammar |
 | `set_interpolation` | Change how keys ease into the next key |
 | `define_outfit` | Name a costume on a character, for `outfit` keys to switch to |
+| `list_part_categories` | Character creator categories, part counts and colour fields |
+| `search_parts` | Find character parts by words ("chef moustache", "winter", "podcast") |
+| `create_character` | Add a character from a recipe of part ids and colours |
+| `update_character` | Change some parts or colours of an existing character |
+| `randomize_character` | Random look (seeded), with `keep` locks and pinned parts; also makes crowds |
+| `preview_character` | See one character on its own as a PNG |
+| `import_parts_pack` | Load a part pack (`parts[]`), e.g. custom hats or held props |
 | `command_reference` | This document |
+
+To design a character from a description: `search_parts` for each idea, `create_character` with
+a recipe, `preview_character` to look, then `update_character` to adjust. Recipes and the part
+pack format are in [CHARACTERS.md](CHARACTERS.md).
 
 A good loop: `get_library` → `script_to_video` or `apply_commands` → `render_frame` to check →
 adjust → `export_video`.

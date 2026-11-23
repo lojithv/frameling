@@ -11,7 +11,8 @@ the browser.
 ## What's in v0.1
 
 - **Scene editor**: drag, scale, rotate, flip and layer characters, props and text on a 1280×720 stage (also 1080p, vertical 9:16 and square).
-- **Characters**: 6 ready-made characters plus a builder (skin, hair style and colour, outfit colours, build, accessories), 13 actions (idle, talk, wave, walk, run, jump, cheer, think, point, shrug, clap, dance, sad) and 7 expressions, with automatic blinking.
+- **Character creator**: remix parts (body, hair, eyes, brows, nose, facial hair, clothes and 22 wearables such as hats, headphones, glasses, earrings, capes and held props) with a live animated preview, colours, randomise with locks, undo and a My characters library. Import your own part packs; AI agents can design characters from a description. See [docs/CHARACTERS.md](docs/CHARACTERS.md).
+- **Characters**: 6 ready-made characters and 8 stick figures to start from, 13 actions (idle, talk, wave, walk, run, jump, cheer, think, point, shrug, clap, dance, sad) and 7 expressions, with automatic blinking.
 - **Voices and lip sync**: select a character, type a line and pick a voice (**built-in offline text-to-speech**), record with the mic, or upload a file. Lines play one after another, the scene grows to fit, and the character lip-syncs and gestures. See [docs/VOICES.md](docs/VOICES.md).
 - **Agent-native**: an MCP server (`frameling mcp`) lets AI agents read the scene, use the library and voices, apply any edit, make characters talk, look at rendered frames and export. They can also turn a screenplay into a video. The desktop app updates live while an agent works. See [docs/AGENTS.md](docs/AGENTS.md).
 - **Movement**: give anything a start and end point; characters walk there and face the way they're going.

@@ -76,6 +76,32 @@ fn tools() -> Value {
             "scene": { "type": "string" }, "item": { "type": "string" }, "name": { "type": "string" },
             "outfit": { "type": ["object", "null"], "description": "e.g. {\"top\":\"#222222\",\"bottom\":\"#222222\",\"accessory\":\"tie\"}" }
         }), &["scene", "item", "name", "outfit"])),
+        tool("list_part_categories", "Character creator categories (body, hair, face, clothes, wearables), how many parts each has, and the colour fields (skin, hair, top, bottom, shoes, accent). Start here when making a character.", obj(json!({}), &[])),
+        tool("search_parts", "Find character parts by words matched against names and tags, e.g. 'chef moustache', 'winter', 'podcast'. Returns part ids to use in a recipe. Built-in ids look like 'hair:curly' or 'eyes:sleepy'; wearables from part packs have plain ids like 'chef-hat'.", obj(json!({
+            "query": { "type": "string", "description": "words; empty lists everything" },
+            "category": { "type": "string", "description": "limit to one category, e.g. hair, eyes, brows, nose, facialHair, body, outfit, headwear, eyewear, neckwear, earrings, back, held" },
+            "style": { "type": "string", "enum": ["cartoon", "stick"], "description": "only parts that fit this figure style" },
+            "limit": { "type": "integer", "description": "default 40" }
+        }), &[])),
+        tool("create_character", "Add a character built from a recipe: {\"style\":\"cartoon\"|\"stick\", \"parts\":[\"hair:curly\",\"facialHair:moustache\",{\"part\":\"chef-hat\",\"colors\":[\"#ffffff\"]}], \"colors\":{\"skin\":\"#8d5a3b\",\"hair\":\"#1b1311\",\"top\":\"#f1f1ef\",\"bottom\":\"#2f3a56\",\"shoes\":\"#2a221e\",\"accent\":\"#e84a5f\"}}. One part per category; parts you leave out keep the default. Check it with preview_character.", obj(json!({
+            "scene": { "type": "string" }, "id": { "type": "string", "description": "new item id" }, "name": { "type": "string" },
+            "recipe": { "type": "object" },
+            "x": { "type": "number", "description": "default 640" }, "y": { "type": "number", "description": "feet, default 640" }, "scale": { "type": "number" },
+            "action": { "type": "string" }, "expression": { "type": "string" }, "voice": { "type": "string" }
+        }), &["scene", "id", "recipe"])),
+        tool("update_character", "Change an existing character with a partial recipe: listed parts replace that category's part, listed colours change, everything else stays. Returns the full recipe.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "recipe": { "type": "object" }
+        }), &["scene", "item", "recipe"])),
+        tool("randomize_character", "Give a character (or a new one, for crowds and extras) a random look. Same seed = same result. keep lists categories or colour groups to leave alone (e.g. [\"hair\",\"skin\",\"clothes\"]); recipe pins parts first.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string", "description": "existing character, or the id of a new one" },
+            "seed": { "type": "integer" }, "style": { "type": "string", "enum": ["cartoon", "stick"] },
+            "keep": { "type": "array", "items": { "type": "string" } }, "recipe": { "type": "object" },
+            "x": { "type": "number" }, "y": { "type": "number" }
+        }), &["scene", "item"])),
+        tool("preview_character", "Render one character on its own as a PNG (optionally playing an action at a time) to check how a recipe looks.", obj(json!({
+            "scene": { "type": "string" }, "item": { "type": "string" }, "action": { "type": "string" }, "seconds": { "type": "number" }, "size": { "type": "integer", "description": "default 320" }
+        }), &["scene", "item"])),
+        tool("import_parts_pack", "Load a part pack (pack.json with a parts[] list) so its parts can be used. Characters that wear them carry copies inside the project file.", obj(json!({ "path": { "type": "string" } }), &["path"])),
         tool("command_reference","Full reference for commands, item fields, the screenplay format and the workflow.", obj(json!({}), &[])),
     ])
 }
@@ -214,6 +240,24 @@ impl Server {
             o += &format!("Outfits: {}\n", serde_json::to_string(of).unwrap_or_default());
         }
         Ok(o)
+    }
+
+    /// Add or replace a character, copy in any pack parts it wears, save, and
+    /// report its recipe.
+    fn put_character(&mut self, scene: &str, item: Item, create: bool) -> Result<Value, String> {
+        let id = item.id.clone();
+        let ItemKind::Character(c) = &item.kind else { return Err("not a character".into()) };
+        let builtin = &Library::builtin().parts;
+        let defs: Vec<_> = c.look.wear.iter().filter(|w| !builtin.contains_key(&w.part) && !self.ed.project.parts.contains_key(&w.part)).filter_map(|w| self.lib.parts.get(&w.part).map(|p| p.def.clone())).collect();
+        let recipe = parts::Recipe::from_look(&c.look, &self.lib, Some(&self.ed.project));
+        let mut cmds = vec![];
+        if !defs.is_empty() {
+            cmds.push(Command::AddParts { parts: defs });
+        }
+        cmds.push(if create { Command::AddItem { scene: scene.into(), item, index: None } } else { Command::UpdateItem { scene: scene.into(), item } });
+        self.ed.apply(&Command::Batch { commands: cmds }, None)?;
+        self.save()?;
+        Ok(text(format!("{} {id}. Recipe: {}\nLook at it with preview_character.", if create { "Created" } else { "Updated" }, serde_json::to_string(&recipe).unwrap())))
     }
 
     fn call(&mut self, name: &str, a: &Value) -> Result<Value, String> {
@@ -394,6 +438,117 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 self.save()?;
                 Ok(text(if removing { format!("Removed outfit {name:?}.") } else { format!("Outfit {name:?} defined on {item}. Switch to it with set_keys path=outfit value={name:?}.") }))
             }
+            "list_part_categories" => {
+                let cat = parts::catalog(&self.lib, None);
+                let mut o = String::from("Categories (one part each):\n");
+                for (id, tab, label) in parts::CATEGORIES {
+                    let n = cat.iter().filter(|p| p.category == *id).count();
+                    o += &format!("  {id} ({tab} tab, {label}): {n} parts\n");
+                }
+                o += "Colour fields: skin, hair, top, bottom, shoes, accent (\"#rrggbb\"). Built-in parts that use a colour say so (colorField); a wearable's own colours go in its {part, colors} entry.\n";
+                o += "Face parts (eyes, brows, nose) apply to cartoon figures; stick figures use their own simple face.\n";
+                Ok(text(o))
+            }
+            "search_parts" => {
+                let limit = a.get("limit").and_then(Value::as_u64).unwrap_or(40) as usize;
+                let found = parts::search(&self.lib, s("query").unwrap_or(""), s("category"), s("style"));
+                let n = found.len();
+                let rows: Vec<Value> = found
+                    .into_iter()
+                    .take(limit)
+                    .map(|p| json!({ "id": p.id, "name": p.name, "category": p.category, "tags": p.tags.join(" "), "styles": p.styles, "colors": p.colors, "colorField": p.color_field }))
+                    .collect();
+                Ok(text(format!("{n} part(s){}\n{}", if n > limit { format!(", first {limit}") } else { String::new() }, serde_json::to_string_pretty(&rows).unwrap())))
+            }
+            "create_character" => {
+                let scene = s("scene").ok_or("scene is required")?;
+                let id = s("id").ok_or("id is required")?;
+                let recipe: parts::Recipe = serde_json::from_value(a.get("recipe").cloned().unwrap_or(json!({}))).map_err(|e| format!("bad recipe: {e}"))?;
+                let look = recipe.to_look(None, &self.lib, Some(&self.ed.project))?;
+                let num = |k: &str| a.get(k).and_then(Value::as_f64).map(|v| v as f32);
+                let mut c = CharacterItem { look, ..Default::default() };
+                if let Some(v) = s("action") {
+                    c.action = v.into();
+                }
+                if let Some(v) = s("expression") {
+                    c.expression = serde_json::from_value(json!(v)).map_err(|_| format!("unknown expression {v:?}"))?;
+                }
+                c.voice = s("voice").map(String::from);
+                let item = Item {
+                    id: id.into(),
+                    name: s("name").unwrap_or(id).into(),
+                    x: num("x").unwrap_or(640.0),
+                    y: num("y").unwrap_or(640.0),
+                    scale: num("scale").unwrap_or(0.95),
+                    kind: ItemKind::Character(c),
+                    ..Default::default()
+                };
+                self.put_character(scene, item, true)
+            }
+            "update_character" => {
+                let (scene, id) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?);
+                let recipe: parts::Recipe = serde_json::from_value(a.get("recipe").cloned().unwrap_or(json!({}))).map_err(|e| format!("bad recipe: {e}"))?;
+                let mut item = self.ed.project.scene(scene).and_then(|sc| sc.item(id)).cloned().ok_or("no such character in that scene")?;
+                let ItemKind::Character(c) = &mut item.kind else { return Err("that item is not a character".into()) };
+                c.look = recipe.to_look(Some(&c.look), &self.lib, Some(&self.ed.project))?;
+                self.put_character(scene, item, false)
+            }
+            "randomize_character" => {
+                let (scene, id) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?);
+                let seed = a.get("seed").and_then(Value::as_u64).unwrap_or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1));
+                let keep: Vec<String> = serde_json::from_value(a.get("keep").cloned().unwrap_or(json!([]))).map_err(|e| format!("bad keep: {e}"))?;
+                let existing = self.ed.project.scene(scene).and_then(|sc| sc.item(id)).cloned();
+                let creating = existing.is_none();
+                let mut item = existing.unwrap_or_else(|| Item {
+                    id: id.into(),
+                    name: id.into(),
+                    x: a.get("x").and_then(Value::as_f64).unwrap_or(640.0) as f32,
+                    y: a.get("y").and_then(Value::as_f64).unwrap_or(640.0) as f32,
+                    scale: 0.95,
+                    kind: ItemKind::Character(CharacterItem::default()),
+                    ..Default::default()
+                });
+                let ItemKind::Character(c) = &mut item.kind else { return Err("that item is not a character".into()) };
+                let mut base = c.look.clone();
+                if let Some(st) = s("style") {
+                    base = parts::Recipe { style: Some(st.into()), ..Default::default() }.to_look(Some(&base), &self.lib, Some(&self.ed.project))?;
+                }
+                let mut look = parts::randomize(&base, &self.lib, Some(&self.ed.project), seed, &keep);
+                if let Some(r) = a.get("recipe") {
+                    let r: parts::Recipe = serde_json::from_value(r.clone()).map_err(|e| format!("bad recipe: {e}"))?;
+                    look = r.to_look(Some(&look), &self.lib, Some(&self.ed.project))?;
+                }
+                c.look = look;
+                let mut v = self.put_character(scene, item, creating)?;
+                if let Some(t) = v["content"][0]["text"].as_str() {
+                    v["content"][0]["text"] = json!(format!("seed {seed}. {t}"));
+                }
+                Ok(v)
+            }
+            "preview_character" => {
+                let (scene, id) = (s("scene").ok_or("scene is required")?, s("item").ok_or("item is required")?);
+                let p = &self.ed.project;
+                let mut item = p.scene(scene).and_then(|sc| sc.item(id)).cloned().ok_or("no such item in that scene")?;
+                if let (ItemKind::Character(c), Some(act)) = (&mut item.kind, s("action")) {
+                    c.action = act.into();
+                }
+                let size = a.get("size").and_then(Value::as_u64).unwrap_or(320).clamp(64, 1024) as u32;
+                let frame = (a.get("seconds").and_then(Value::as_f64).unwrap_or(0.3) * p.fps as f64).round() as u32;
+                let dl = eval::item_preview(&self.lib, &p.parts, &item, size, size, frame);
+                let png = frameling_render::render_png(&dl, size, size)?;
+                Ok(json!({ "content": [
+                    { "type": "image", "data": base64::engine::general_purpose::STANDARD.encode(png), "mimeType": "image/png" },
+                    { "type": "text", "text": format!("{id}") }
+                ]}))
+            }
+            "import_parts_pack" => {
+                let path = s("path").ok_or("path is required")?;
+                let json = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+                let pack: frameling_core::pack::PackFile = serde_json::from_str(&json).map_err(|e| format!("invalid pack: {e}"))?;
+                let ids: Vec<String> = pack.parts.iter().map(|p| p.id.clone()).collect();
+                let pid = self.lib.add_pack(pack)?;
+                Ok(text(format!("Loaded pack {pid:?} with {} part(s): {}", ids.len(), ids.join(", "))))
+            }
             "command_reference" => Ok(text(REFERENCE)),
             other => Err(format!("unknown tool {other}")),
         }
@@ -408,7 +563,7 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                 "protocolVersion": msg["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "frameling", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Frameling makes animated cartoon videos. Start with get_project and get_library. Use script_to_video for a quick first cut, apply_commands for precise edits, say_line for dialogue, set_keys to animate any property over time (movement, rotation, scale, bones, skin colour, outfits, expression, camera), and render_frame to look at your work before export_video."
+                "instructions": "Frameling makes animated cartoon videos. Start with get_project and get_library. Use script_to_video for a quick first cut, search_parts + create_character to design characters from a description (check with preview_character), apply_commands for precise edits, say_line for dialogue, set_keys to animate any property over time (movement, rotation, scale, bones, skin colour, outfits, expression, camera), and render_frame to look at your work before export_video."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),

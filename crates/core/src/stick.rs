@@ -8,7 +8,9 @@
 use crate::display::{Op, Path};
 use crate::geom::{Affine, Color};
 use crate::model::{Accessory, Build, Expression, HairStyle, Look};
-use crate::rig::{wavy_mouth, Face, Pose};
+use crate::pack::{Anchor, Layer};
+use crate::rig::{wavy_mouth, worn_at, Face, Pose, Worn};
+use crate::model::FacialHair;
 
 const HIP_Y: f32 = -100.0;
 const NECK_Y: f32 = -204.0;
@@ -29,7 +31,12 @@ fn bone(start: (f32, f32), a1: f32, a2: f32, l1: f32, l2: f32, side: f32) -> ((f
     (mid, (mid.0 + d2.0 * l2, mid.1 + d2.1 * l2))
 }
 
-pub fn draw_stick(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
+/// Stick parts are authored at cartoon size: the head is 40 px instead of 50,
+/// and the body is a line, so neck and torso parts shrink.
+const HEAD_K: f32 = HEAD_R / 50.0;
+const BODY_K: f32 = 0.62;
+
+pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn]) -> Vec<Op> {
     let ink = look.top;
     let w: f32 = match look.build {
         Build::Slim => 7.0,
@@ -53,6 +60,12 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
     let mut upper = Vec::new();
     let head_c = (0.0f32, HEAD_Y);
     let head_t = Affine::translate(head_c.0, head_c.1).then(&Affine::rotate_deg(pose.head));
+    let part_head_t = head_t.then(&Affine::scale(HEAD_K, HEAD_K));
+    let neck_t = Affine::translate(0.0, NECK_Y).then(&Affine::scale(BODY_K, BODY_K));
+    let torso_t = Affine::translate(0.0, NECK_Y + 34.0).then(&Affine::scale(BODY_K, BODY_K));
+    for (a, t) in [(Anchor::Neck, neck_t), (Anchor::Torso, torso_t), (Anchor::Head, part_head_t)] {
+        upper.extend(worn_at(wear, a, Layer::Back, t));
+    }
 
     // Long hair hangs behind the head and shoulders.
     if look.hair_style == HairStyle::Long {
@@ -89,12 +102,19 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
         upper.push(Op::fill(p, look.accent));
     }
 
+    upper.extend(worn_at(wear, Anchor::Torso, Layer::Front, torso_t));
+    upper.extend(worn_at(wear, Anchor::Neck, Layer::Front, neck_t));
+
     // Arms
     for (side, s, e) in [(-1.0f32, pose.ls, pose.le), (1.0, pose.rs, pose.re)] {
         let start = (side * 2.0, SHOULDER_Y);
         let (elbow, hand) = bone(start, s, e, 44.0, 42.0, side);
+        let anchor = if side > 0.0 { Anchor::HandR } else { Anchor::HandL };
+        let hand_t = Affine::translate(hand.0, hand.1).then(&Affine::scale(0.85, 0.85));
+        upper.extend(worn_at(wear, anchor, Layer::Back, hand_t));
         upper.push(Op::stroke(Path::polyline(&[start, elbow, hand], false), ink, w));
         upper.push(Op::fill(Path::circle(hand.0, hand.1, w * 0.75), ink));
+        upper.extend(worn_at(wear, anchor, Layer::Front, hand_t));
         if side > 0.0 && pose.thumb > 0.5 {
             // Fist with the thumb pointing up, whatever the arm angle.
             upper.push(Op::fill(Path::circle(hand.0, hand.1, w * 1.05), ink));
@@ -104,7 +124,8 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
 
     // ---- head -------------------------------------------------------------
     let mut head = Vec::new();
-    draw_head(&mut head, look, pose, face, ink, w);
+    draw_head(&mut head, look, pose, face, ink, w, wear.iter().any(|x| x.hides_hair));
+    head.extend(worn_at(wear, Anchor::Head, Layer::Front, Affine::scale(HEAD_K, HEAD_K)));
     upper.push(Op::group(head_t, 1.0, head));
 
     let lean_t = Affine::translate(0.0, HIP_Y + pose.bob).then(&Affine::rotate_deg(pose.lean)).then(&Affine::translate(0.0, -HIP_Y));
@@ -113,7 +134,7 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face) -> Vec<Op> {
     vec![Op::group(Affine::translate(0.0, -pose.rise), 1.0, all)]
 }
 
-fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, ink: Color, w: f32) {
+fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, ink: Color, w: f32, hide_hair: bool) {
     let r = HEAD_R;
     if look.hair_style == HairStyle::Bun {
         out.push(Op::fill(Path::circle(0.0, -r - 10.0, 15.0), look.hair));
@@ -122,7 +143,10 @@ fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, ink: Colo
     out.push(Op::stroke(Path::circle(0.0, 0.0, r), ink, (w * 0.8).max(5.0)));
 
     draw_face(out, pose, face, ink);
-    draw_hair(out, look);
+    draw_facial_hair(out, look);
+    if !hide_hair {
+        draw_hair(out, look);
+    }
 
     match look.accessory {
         Accessory::Glasses => {
@@ -242,6 +266,37 @@ fn draw_hair(out: &mut Vec<Op>, look: &Look) {
                 let a = (205.0 + i as f32 * 21.5f32).to_radians();
                 out.push(Op::stroke(Path::circle(a.cos() * (r + 2.0), a.sin() * (r + 2.0), 9.0), c, 4.0));
             }
+        }
+    }
+}
+
+/// Line-drawn facial hair in the hair colour.
+fn draw_facial_hair(out: &mut Vec<Op>, look: &Look) {
+    let c = look.hair;
+    let tache = |out: &mut Vec<Op>| {
+        let mut p = Path::new();
+        p.move_to(-14.0, 14.0).quad_to(0.0, 6.0, 14.0, 14.0);
+        out.push(Op::stroke(p, c, 4.5));
+    };
+    match look.facial_hair {
+        FacialHair::None => {}
+        FacialHair::Stubble => {
+            for i in 0..9 {
+                let a = (25.0 + i as f32 * 16.0f32).to_radians();
+                out.push(Op::fill(Path::circle(a.cos() * 30.0, a.sin() * 30.0 + 4.0, 1.6), c));
+            }
+        }
+        FacialHair::Moustache => tache(out),
+        FacialHair::Goatee => {
+            tache(out);
+            out.push(Op::stroke(Path::polyline(&[(0.0, 30.0), (0.0, 40.0)], false), c, 6.0));
+        }
+        FacialHair::Beard | FacialHair::FullBeard => {
+            tache(out);
+            let drop = if look.facial_hair == FacialHair::FullBeard { 58.0 } else { 48.0 };
+            let mut p = Path::new();
+            p.move_to(-38.0, 8.0).cubic_to(-34.0, drop, 34.0, drop, 38.0, 8.0);
+            out.push(Op::stroke(p, c, 5.0));
         }
     }
 }

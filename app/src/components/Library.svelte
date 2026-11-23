@@ -4,6 +4,7 @@
   import { itemThumb, backgroundThumb } from "../lib/thumbs";
   import { importAudio } from "../lib/audio";
   import { loadPackFile } from "../lib/platform";
+  import { loadMyCharacters } from "../lib/mycharacters";
   import type { CatalogEntry, Item, Scene } from "../lib/types";
 
   const tabs = [
@@ -71,6 +72,11 @@
   }
 
   const media = $derived(Object.values(app.project?.media ?? {}));
+  // Re-read after the creator closes (it may have saved one).
+  const myChars = $derived.by(() => {
+    void app.creator;
+    return loadMyCharacters();
+  });
 </script>
 
 <aside class="panel library">
@@ -84,7 +90,19 @@
 
   <div class="body">
     {#if tab === "characters"}
-      <p class="hint">Click to add, or drag onto the stage. Restyle anyone in the inspector.</p>
+      <button class="create" onclick={() => (app.creator = { itemId: null })}>✎ Create a character</button>
+      <p class="hint">Click to add, or drag onto the stage. Restyle anyone in the inspector or the creator.</p>
+      {#if myChars.length}
+        <h4>My characters</h4>
+        <div class="grid">
+          {#each myChars as m (m.id)}
+            <button class="card" class:paper={m.look.style === "stick"} onclick={() => add(newCharacter(m.look, m.name))} title="Add {m.name}">
+              <img alt="" src={itemThumb(`my-${m.id}-${m.savedAt}`, newCharacter(m.look, m.name), 120, 140)} />
+              <span>{m.name}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
       {#each [["Cartoon", false], ["Stick figures", true]] as [label, stick]}
       <h4>{label}</h4>
       <div class="grid">
@@ -337,5 +355,13 @@
   }
   .file input {
     display: none;
+  }
+  .create {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 9px;
+    font-weight: 600;
+    border-color: var(--accent);
+    color: var(--accent-2);
   }
 </style>
