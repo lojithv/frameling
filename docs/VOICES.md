@@ -88,13 +88,14 @@ Characters form nine standard mouth shapes (visemes): rest, M/B/P (lips pressed)
 the same way the auto subtitles are, spelled out as rough sounds, and the shapes are spread
 over the word; loudness decides how wide vowels open. Sounds without words get shapes from
 the loudness alone, with the lips closing between syllables. No speech recogniser is needed
-and the result is deterministic ().
+and the result is deterministic (`crates/core/src/lipsync.rs`).
 
-- **Mode** per character (Inspector → Lip sync, ):  (default),   (open/close with the volume, the old behaviour) or .
-- **Mouth sets** ():  (dark opening, teeth, tongue) and  (full
+- **Mode** per character (Inspector → Lip sync, `lipSync`): `shapes` (default), `simple`
+  (open/close with the volume, the old behaviour) or `off`.
+- **Mouth sets** (`look.mouth`): `classic` (dark opening, teeth, tongue) and `lips` (full
   coloured lips). Stick figures have line-drawn shapes. Every set draws all nine shapes, so
-  new sets (animals, objects) can be added in .
-- **Fix a frame by hand**: the  track keys a shape (, , , , ,
-  , , , ) or  to hand back to the voice. In the inspector, click a shape
+  new sets (animals, objects) can be added in `crates/core/src/mouths.rs`.
+- **Fix a frame by hand**: the `mouth` track keys a shape (`rest`, `mbp`, `ee`, `eh`, `ai`,
+  `o`, `u`, `fv`, `l`) or `"auto"` to hand back to the voice. In the inspector, click a shape
   to set one frame, shift-click to hold it until the next mouth key.
--  draws every shape of every set (a dev aid).
+- `frameling mouths sheet.png` draws every shape of every set (a dev aid).
