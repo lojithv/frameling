@@ -290,9 +290,8 @@ fn draw_face(out: &mut Vec<Op>, pose: &Pose, face: &Face, ink: Color) {
     }
 
     let (mx, my) = (0.0, 16.0);
-    if face.mouth > 0 {
-        let l = face.mouth as f32;
-        out.push(Op::fill(Path::ellipse(mx, my, 6.0 + 3.0 * l, 2.5 + 3.2 * l), ink));
+    if face.mouth != crate::lipsync::Viseme::Rest {
+        crate::mouths::draw_stick(out, face.mouth, mx, my, ink);
         return;
     }
     let mut p = Path::new();

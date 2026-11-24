@@ -234,6 +234,11 @@ pub fn expression(c: &CharacterItem, tracks: &Tracks, frame: u32) -> Expression 
         .unwrap_or(c.expression)
 }
 
+/// A mouth shape keyed by hand at this frame (`None`: no key, or "auto").
+pub fn mouth(tracks: &Tracks, frame: u32) -> Option<crate::lipsync::Viseme> {
+    tracks.get(Channel::Mouth.path()).and_then(|t| t.step(frame as f32)).and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
 /// The keyed view (turnaround), or the character's own.
 pub fn view(c: &CharacterItem, tracks: &Tracks, frame: u32) -> crate::model::View {
     tracks

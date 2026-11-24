@@ -8,7 +8,7 @@ frame shape (16:9, 9:16 and square).
 
 Ranked by how much they help someone make a finished short video quickly.
 
-- [ ] **Lip sync with mouth shapes.** Characters form real mouth shapes (closed
+- [x] **Lip sync with mouth shapes.** Characters form real mouth shapes (closed
       M/B/P, F/V, O, OO, wide vowels, teeth, tongue) timed to the words of each
       voice line, not just open and shut. Two mouth sets for now (classic and
       lips), stick figures included, with a per-character mode and a keyable

@@ -256,15 +256,17 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
     let children = match &item.kind {
         ItemKind::Character(c) => {
             let secs = since / fps * c.speed.max(0.05);
-            let level = speech_level(project, scene, &item.id, local);
-            let mut pose = character_pose(project, lib, item, c, local, secs, moving, dir, flip, level.is_some());
-            // From behind there is no mouth to move.
-            let level = if character_view(item, c, local, moving, dir, flip).yaw().abs() > 105.0 { None } else { level };
+            let speech = speech_mouth(project, scene, &item.id, c.lip_sync, local);
+            let mut pose = character_pose(project, lib, item, c, local, secs, moving, dir, flip, speech.is_some());
+            // A shape keyed by hand wins; from behind there is no mouth to move.
+            let auto = if c.lip_sync == crate::lipsync::LipSync::Off { None } else { speech };
+            let mouth = anim::mouth(&item.tracks, local).or(auto).unwrap_or_default();
+            let mouth = if character_view(item, c, local, moving, dir, flip).yaw().abs() > 105.0 { crate::lipsync::Viseme::Rest } else { mouth };
             pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
             anim::apply_bones(&item.tracks, &mut pose, local);
             let phase = (hash_str(&item.id) % 1000) as f32 / 1000.0 * 3.0;
             let blink = ((local as f32 / fps) + phase).rem_euclid(3.6) < 0.12;
-            let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth: level.unwrap_or(0) };
+            let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth };
             let look = anim::resolve_look(c, &item.tracks, local);
             let wear = crate::parts::worn(project, lib, &look);
             let view = character_view(item, c, local, moving, dir, flip);
@@ -292,9 +294,12 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
     Some(Op::group(tf, opacity, children))
 }
 
-/// Lip-sync mouth level (1..=3) if this character is speaking at `local`.
-fn speech_level(project: &Project, scene: &Scene, id: &str, local: u32) -> Option<u8> {
-    let mut best: Option<f32> = None;
+/// The lip-sync mouth shape if this character is speaking at `local`
+/// (`Some(Rest)` in a pause inside a line). With several lines at once the
+/// loudest one wins.
+fn speech_mouth(project: &Project, scene: &Scene, id: &str, mode: crate::lipsync::LipSync, local: u32) -> Option<crate::lipsync::Viseme> {
+    use crate::lipsync::{self, LipSync};
+    let mut best: Option<(f32, lipsync::Viseme)> = None;
     for clip in scene.audio.iter().filter(|c| c.speaker.as_deref() == Some(id)) {
         let Some(media) = project.media.get(&clip.media) else { continue };
         let len = clip.play_frames(media);
@@ -305,14 +310,16 @@ fn speech_level(project: &Project, scene: &Scene, id: &str, local: u32) -> Optio
         let v = media.envelope.get(idx).copied().unwrap_or(0.0);
         let prev = idx.checked_sub(1).and_then(|i| media.envelope.get(i)).copied().unwrap_or(v);
         let v = v * 0.7 + prev * 0.3;
-        best = Some(best.map_or(v, |b| b.max(v)));
+        if best.is_some_and(|(b, _)| b >= v) {
+            continue;
+        }
+        let shape = match mode {
+            LipSync::Shapes => lipsync::timeline(lipsync::clip_text(clip, media), media).get(idx).copied().unwrap_or_default(),
+            _ => lipsync::simple(v),
+        };
+        best = Some((v, shape));
     }
-    best.map(|v| match v {
-        v if v < 0.12 => 0,
-        v if v < 0.35 => 1,
-        v if v < 0.65 => 2,
-        _ => 3,
-    })
+    best.map(|b| b.1)
 }
 
 /// Standard bounce-out easing (a ball dropped onto the floor).
@@ -707,7 +714,7 @@ pub fn posed_character(project: &Project, lib: &Library, scene: &str, item: &str
     let fps = project.fps.max(1) as f32;
     let since = local.saturating_sub(it.start) as f32;
     let tr = anim::item_transform(it, local);
-    let speaking = speech_level(project, sc, &it.id, local).is_some();
+    let speaking = speech_mouth(project, sc, &it.id, crate::lipsync::LipSync::Simple, local).is_some();
     let mut pose = character_pose(project, lib, it, c, local, since / fps * c.speed.max(0.05), tr.moving, tr.dir, tr.flip, speaking);
     pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
     anim::apply_bones(&it.tracks, &mut pose, local);

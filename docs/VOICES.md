@@ -27,7 +27,7 @@
 | Record | Flash mic | microphone, silence trimmed, saved as WAV |
 | Upload | MP3 | any format the platform decodes |
 | Placement | after the last line, scene grows | `addLine` command: after the last spoken line (+0.2 s), scene grows to fit (+0.5 s) |
-| Lip sync | volume | per-frame loudness envelope stored in the project, so preview and every export match exactly |
+| Lip sync | volume | **mouth shapes** timed to the words (see below), from the per-frame loudness envelope stored in the project, so preview and every export match exactly |
 | Talking body | talk animation | idle characters switch to the `talk` action while speaking |
 | Re-voice | regenerate | ↻ re-speaks a typed line with the current voice and speed, in the same place |
 | Agents / scripts | no | `say_line` MCP tool, `frameling say`, and screenplays (`script_to_video`) |
@@ -79,3 +79,22 @@ revision, so builds stay reproducible. Mirror the files yourself if that repo ev
 The web build has no typed-line TTS yet (record and upload work). Supertonic can run in the
 browser with onnxruntime-web (WebGPU or WASM), but the 400 MB download makes that a separate
 decision.
+
+## Lip sync
+
+Characters form nine standard mouth shapes (visemes): rest, M/B/P (lips pressed), EE
+(teeth together), EH, AH (wide), O, OO (pursed), F/V (teeth on the lower lip) and L/TH
+(tongue up). For a typed line, or any sound with a subtitle, each word is timed to the audio
+the same way the auto subtitles are, spelled out as rough sounds, and the shapes are spread
+over the word; loudness decides how wide vowels open. Sounds without words get shapes from
+the loudness alone, with the lips closing between syllables. No speech recogniser is needed
+and the result is deterministic ().
+
+- **Mode** per character (Inspector → Lip sync, ):  (default),   (open/close with the volume, the old behaviour) or .
+- **Mouth sets** ():  (dark opening, teeth, tongue) and  (full
+  coloured lips). Stick figures have line-drawn shapes. Every set draws all nine shapes, so
+  new sets (animals, objects) can be added in .
+- **Fix a frame by hand**: the  track keys a shape (, , , , ,
+  , , , ) or  to hand back to the voice. In the inspector, click a shape
+  to set one frame, shift-click to hold it until the next mouth key.
+-  draws every shape of every set (a dev aid).

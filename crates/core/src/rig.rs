@@ -122,8 +122,8 @@ pub fn sample_action(a: &ActionDef, secs: f32) -> Pose {
 pub struct Face {
     pub expression: Expression,
     pub blink: bool,
-    /// Mouth opening from lip sync, 0..=3 (0 = closed / expression mouth).
-    pub mouth: u8,
+    /// Lip-sync mouth shape (`Rest`: the expression's own mouth).
+    pub mouth: crate::lipsync::Viseme,
 }
 
 /// A wearable part ready to draw: its ops (colours applied) and where it goes.
@@ -145,7 +145,6 @@ pub(crate) fn worn_at(wear: &[Worn], anchor: Anchor, layer: Layer, t: Affine) ->
 
 const INK: Color = Color::INK;
 const MOUTH: Color = Color::rgb(0x5a, 0x1e, 0x2c);
-const TONGUE: Color = Color::rgb(0xe8, 0x6f, 0x7e);
 
 fn dir(angle_deg: f32, side: f32) -> (f32, f32) {
     let r = angle_deg.to_radians();
@@ -463,7 +462,7 @@ fn draw_head_turned(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, we
     out.push(Op::group(Affine::translate(bx, 0.0).then(&Affine::scale(0.5 + 0.5 * c, 1.0)), 1.0, beard));
     let (mx, _) = proj(0.0, 30.0);
     let mut ops = Vec::new();
-    draw_mouth(&mut ops, face);
+    draw_mouth(&mut ops, look, face);
     draw_moustache(&mut ops, look);
     out.push(Op::group(Affine::translate(mx, 0.0).then(&Affine::scale(0.6 + 0.4 * c, 1.0)), 1.0, ops));
     let mut nose = Vec::new();
@@ -529,7 +528,7 @@ fn draw_head(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, wear: &[W
 
     draw_eyes(out, look, pose, face);
     draw_beard(out, look);
-    draw_mouth(out, face);
+    draw_mouth(out, look, face);
     draw_moustache(out, look);
     draw_nose(out, look);
 
@@ -655,16 +654,16 @@ fn draw_eyes_side(out: &mut Vec<Op>, look: &Look, pose: &Pose, face: &Face, side
     }
 }
 
-fn draw_mouth(out: &mut Vec<Op>, face: &Face) {
+fn draw_mouth(out: &mut Vec<Op>, look: &Look, face: &Face) {
     use Expression::*;
     let (mx, my) = (0.0, 26.0);
-    if face.mouth > 0 {
-        let l = face.mouth as f32;
-        let (rx, ry) = (8.0 + 3.5 * l, 3.0 + 4.0 * l);
-        out.push(Op::fill(Path::ellipse(mx, my, rx, ry), MOUTH));
-        if face.mouth >= 2 {
-            out.push(Op::fill(Path::ellipse(mx, my + ry * 0.45, rx * 0.55, ry * 0.4), TONGUE));
-        }
+    if face.mouth != crate::lipsync::Viseme::Rest {
+        crate::mouths::draw(out, look, face.mouth, mx, my);
+        return;
+    }
+    let lips = look.mouth == crate::model::MouthSet::Lips;
+    if lips {
+        crate::mouths::rest_lips(out, look, face.expression, mx, my);
         return;
     }
     match face.expression {

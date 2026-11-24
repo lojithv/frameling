@@ -10,6 +10,7 @@
 //!   frameling script <screenplay.txt> <out.frameling> [--bubbles]   script-to-video
 //!   frameling mcp <project.frameling>              MCP server for AI agents (stdio); see docs/AGENTS.md
 //!   frameling sheet <out.png>                       contact sheet of every action and expression (dev aid)
+//!   frameling mouths <out.png>                      every lip-sync mouth shape of every mouth set (dev aid)
 
 mod mcp;
 mod screenplay;
@@ -175,11 +176,47 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
             std::fs::write(out.as_str(), png).map_err(|e| e.to_string())?;
             println!("wrote {out}");
         }
+        Some("mouths") => {
+            let out = pos.get(1).ok_or("missing output")?;
+            let lib = library(&args)?;
+            let png = frameling_render::render_png(&mouth_sheet(&lib), 1800, 900)?;
+            std::fs::write(out.as_str(), png).map_err(|e| e.to_string())?;
+            println!("wrote {out}");
+        }
         _ => {
             eprintln!("{}", include_str!("main.rs").lines().take_while(|l| l.starts_with("//!")).map(|l| l.trim_start_matches("//!")).collect::<Vec<_>>().join("\n"));
         }
     }
     Ok(())
+}
+
+/// Dev aid: the nine lip-sync shapes (columns) for each mouth set (rows).
+fn mouth_sheet(lib: &Library) -> frameling_core::DisplayList {
+    use frameling_core::lipsync::Viseme;
+    use frameling_core::*;
+    let mut p = Project { width: 1800, height: 900, ..Default::default() };
+    let mut s = Scene::new("sheet", "sheet");
+    s.background.preset = "studio".into();
+    // Zoom in on the heads: world rows are 150 px apart.
+    s.camera.from = CamKey { x: 640.0, y: 300.0, zoom: 1.0 };
+    let rows: [(Look, &str); 4] = [
+        (Look::default(), "classic"),
+        (Look { mouth: MouthSet::Lips, hair_style: HairStyle::Long, skin: Color::rgb(0xc6, 0x8b, 0x62), ..Default::default() }, "lips"),
+        (Look { mouth: MouthSet::Lips, hair_style: HairStyle::Bun, skin: Color::rgb(0xf6, 0xd5, 0xbd), ..Default::default() }, "lips2"),
+        (Look::stick(false), "stick"),
+    ];
+    for (r, (look, name)) in rows.iter().enumerate() {
+        for (c, v) in Viseme::ALL.iter().enumerate() {
+            let ch = CharacterItem { look: look.clone(), ..Default::default() };
+            let mut it = Item { id: format!("{name}{c}"), x: 120.0 + c as f32 * 130.0, y: 230.0 + r as f32 * 150.0, scale: 0.62, kind: ItemKind::Character(ch), ..Default::default() };
+            let mut track = Track::default();
+            track.keys.push(Key { frame: 0, value: serde_json::Value::from(v.name()), interp: Default::default() });
+            it.tracks.insert("mouth".into(), track);
+            s.items.push(it);
+        }
+    }
+    p.scenes = vec![s];
+    evaluate(&p, lib, 3)
 }
 
 /// Dev aid: every action (at 3 phases) and every expression on one image.

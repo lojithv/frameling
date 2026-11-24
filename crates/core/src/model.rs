@@ -361,6 +361,9 @@ pub struct CharacterItem {
     /// Turn to face the way it walks (side views; front or back when walking
     /// toward or away from the camera).
     pub auto_turn: bool,
+    /// How the mouth follows voice lines (shapes, simple open/close, off).
+    #[serde(skip_serializing_if = "is_default")]
+    pub lip_sync: crate::lipsync::LipSync,
 }
 
 /// The eight turnaround views. Right/left mean facing screen right/left.
@@ -422,6 +425,7 @@ impl Default for CharacterItem {
             poses: Vec::new(),
             view: View::Front,
             auto_turn: true,
+            lip_sync: crate::lipsync::LipSync::Shapes,
         }
     }
 }
@@ -456,6 +460,20 @@ pub struct Look {
     /// in order on top of the figure at their part's anchor.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub wear: Vec<Wear>,
+    /// Which set of mouth shapes lip sync draws (cartoon figures).
+    #[serde(skip_serializing_if = "is_default")]
+    pub mouth: MouthSet,
+}
+
+/// A set of lip-sync mouth shapes. Every set draws all nine shapes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum MouthSet {
+    /// A dark open mouth with teeth and tongue.
+    #[default]
+    Classic,
+    /// Full coloured lips around the opening.
+    Lips,
 }
 
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
@@ -585,6 +603,7 @@ impl Default for Look {
             nose: NoseStyle::Button,
             facial_hair: FacialHair::None,
             wear: Vec::new(),
+            mouth: MouthSet::Classic,
         }
     }
 }

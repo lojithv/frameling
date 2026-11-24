@@ -105,6 +105,8 @@ export interface Look {
   facialHair?: "none" | "stubble" | "moustache" | "goatee" | "beard" | "fullBeard";
   /** Wearable parts from part packs, with their colour overrides. */
   wear?: { part: string; colors?: string[] }[];
+  /** Lip-sync mouth set (cartoon figures; absent = classic). */
+  mouth?: MouthSet;
 }
 
 /** One entry of the character parts catalogue. */
@@ -140,7 +142,14 @@ export interface CharacterKind {
   view?: View;
   /** Face the way it walks. */
   autoTurn?: boolean;
+  /** How the mouth follows voice lines (absent = shapes). */
+  lipSync?: LipSync;
 }
+
+/** Lip-sync mouth shapes (crates/core/src/lipsync.rs). */
+export type Viseme = "rest" | "mbp" | "ee" | "eh" | "ai" | "o" | "u" | "fv" | "l";
+export type LipSync = "shapes" | "simple" | "off";
+export type MouthSet = "classic" | "lips";
 
 export type View = "front" | "frontRight" | "right" | "backRight" | "back" | "backLeft" | "left" | "frontLeft";
 

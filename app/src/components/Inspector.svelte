@@ -3,6 +3,7 @@
   import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
   import PosePanel from "./PosePanel.svelte";
+  import type { LipSync, MouthSet, Viseme } from "../lib/types";
   import type { AudioClip, CaptionStyle, Captions, CharacterKind, Effect, Emphasis, Font, Item, PropKind, Reveal, Scene, TextKind, TransitionKind, View } from "../lib/types";
   import { saveSubtitles } from "../lib/platform";
   import { eng } from "../lib/store.svelte";
@@ -155,8 +156,42 @@
     "transform.opacity": "opacity", "transform.flip": "flip", expression: "expression", outfit: "outfit",
     "look.skin": "skin", "look.hair": "hair colour", "look.hairStyle": "hair style", "look.top": "top",
     "look.bottom": "bottom", "look.shoes": "shoes", "look.accent": "accent", "look.build": "build",
-    "look.accessory": "accessory", "look.style": "style", "look.dress": "dress",
+    "look.accessory": "accessory", "look.style": "style", "look.dress": "dress", mouth: "mouth",
   };
+  // ------------------------------------------------------------ lip sync
+  const VISEMES: { id: Viseme | "auto"; label: string; hint: string }[] = [
+    { id: "auto", label: "Auto", hint: "Follow the voice line" },
+    { id: "rest", label: "Rest", hint: "Closed, the expression's own mouth" },
+    { id: "mbp", label: "M B P", hint: "Lips pressed together" },
+    { id: "ee", label: "EE", hint: "Teeth together: S, T, K, N, EE" },
+    { id: "eh", label: "EH", hint: "Open: E as in bed" },
+    { id: "ai", label: "AH", hint: "Wide open: A as in father" },
+    { id: "o", label: "O", hint: "Round: O as in go" },
+    { id: "u", label: "OO", hint: "Pursed: OO, W, Q" },
+    { id: "fv", label: "F V", hint: "Top teeth on the lower lip" },
+    { id: "l", label: "L TH", hint: "Tongue up behind the teeth" },
+  ];
+  /** The mouth shape keyed at the playhead ("auto" when none). */
+  const mouthHere = $derived.by(() => {
+    const keys = item?.tracks?.mouth?.keys ?? [];
+    let v: unknown = "auto";
+    for (const k of keys) if (k.frame <= app.frame) v = k.value;
+    return v as Viseme | "auto";
+  });
+  const mouthKeys = $derived(item?.tracks?.mouth?.keys.length ?? 0);
+  /** Key a mouth shape at the playhead; it holds until the next mouth key. */
+  function keyMouth(v: Viseme | "auto") {
+    if (!scene || !item) return;
+    const cmds: import("../lib/types").Command[] = [{ op: "setKeys", scene: scene.id, item: item.id, path: "mouth", keys: [{ frame: app.frame, value: v, interp: "constant" }] }];
+    // A one-off shape: go back to automatic on the next frame unless keyed there.
+    const next = item.tracks?.mouth?.keys.find((k) => k.frame === app.frame + 1);
+    if (v !== "auto" && !next && scene.duration > app.frame + 1) cmds.push({ op: "setKeys", scene: scene.id, item: item.id, path: "mouth", keys: [{ frame: app.frame + 1, value: "auto", interp: "constant" }] });
+    run({ op: "batch", commands: cmds });
+  }
+  function holdMouth(v: Viseme) {
+    if (!scene || !item) return;
+    run({ op: "setKeys", scene: scene.id, item: item.id, path: "mouth", keys: [{ frame: app.frame, value: v, interp: "constant" }] });
+  }
   const keyedHere = $derived.by(() => {
     if (!item?.tracks) return [];
     const names = Object.entries(item.tracks)
@@ -343,6 +378,27 @@
         </div>
       </section>
       <VoicePanel {item} />
+      <section class="lipsync">
+        <h3>Lip sync</h3>
+        <div class="field"><span>Mouth</span>
+          {@render seg(ch.lipSync ?? "shapes", [{ id: "shapes", label: "Shapes" }, { id: "simple", label: "Open / close" }, { id: "off", label: "Off" }] as { id: LipSync; label: string }[], (v) => editKind<CharacterKind>((k) => (k.lipSync = v)))}
+        </div>
+        {#if ch.look.style !== "stick"}
+          <div class="field"><span>Mouth set</span>
+            {@render seg(ch.look.mouth ?? "classic", [{ id: "classic", label: "Classic" }, { id: "lips", label: "Lips" }] as { id: MouthSet; label: string }[], (v) => editKind<CharacterKind>((k) => (k.look.mouth = v)))}
+          </div>
+        {/if}
+        <h4>Shape at {fmtTime(app.frame)}</h4>
+        <div class="chips visemes">
+          {#each VISEMES as v}
+            <button class:on={mouthHere === v.id} title="{v.hint}. Click: this frame only. Shift-click: hold until the next mouth key." onclick={(e) => (e.shiftKey && v.id !== "auto" ? holdMouth(v.id as Viseme) : keyMouth(v.id))}>{v.label}</button>
+          {/each}
+        </div>
+        <p class="hint small">
+          Shapes follow the words of each line automatically. Pick a shape to fix this frame by hand (shift-click holds it).
+          {#if mouthKeys}<button class="link" onclick={() => scene && item && run({ op: "deleteKeys", scene: scene.id, item: item.id, path: "mouth" })}>Clear {mouthKeys} mouth key{mouthKeys === 1 ? "" : "s"}</button>{/if}
+        </p>
+      </section>
       <section>
         <h3>Appearance</h3>
         <button class="creator-btn" onclick={() => (app.creator = { itemId: item.id })}>✎ Open character creator</button>
@@ -999,6 +1055,10 @@
   .danger:hover {
     border-color: #e84a5f;
     color: #ff8a98;
+  }
+  .visemes button {
+    padding: 4px 8px;
+    font-size: 11px;
   }
   .chips .made {
     border-style: dashed;
