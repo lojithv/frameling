@@ -117,6 +117,44 @@
     window.addEventListener("pointerup", up);
   }
 
+  /** Frames with a camera key in this scene. */
+  const camKeys = $derived.by(() => {
+    const set = new Set<number>();
+    for (const [p, t] of Object.entries(scene?.tracks ?? {})) if (p.startsWith("camera.")) for (const k of t.keys) set.add(k.frame);
+    return [...set].sort((a, b) => a - b);
+  });
+
+  /** Drag a camera key diamond to retime that moment (click: jump there). */
+  function dragCamKey(ev: PointerEvent, f0: number) {
+    ev.stopPropagation();
+    const all = camKeys;
+    const i = all.indexOf(f0);
+    const lo = i > 0 ? all[i - 1] + 1 : 0;
+    const hi = i < all.length - 1 ? all[i + 1] - 1 : dur - 1;
+    const x0 = ev.clientX;
+    let cur = f0;
+    let moved = false;
+    const key = `camkey-${Date.now()}`;
+    const move = (e: PointerEvent) => {
+      if (!moved && Math.abs(e.clientX - x0) < 4) return;
+      moved = true;
+      const f = Math.min(hi, Math.max(lo, frameFromX(e.clientX)));
+      if (f === cur) return;
+      if (run({ op: "moveKeys", scene: scene!.id, item: null, from: cur, to: f }, key)) {
+        cur = f;
+        app.frame = f;
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) endGesture();
+      else app.frame = f0;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   /** Drag a bar's body (move in time) or its edges (trim). */
   function dragBar(ev: PointerEvent, item: Item, mode: "move" | "start" | "end") {
     ev.stopPropagation();
@@ -366,6 +404,9 @@
             <button onclick={() => setZoom(1)} disabled={zoom <= 1} title="Fit the whole scene" aria-label="Fit scene">⤢</button>
           </span>
         </div>
+        {#if camKeys.length}
+          <button class="lab" onclick={() => (app.selected = null)} title="Camera keys (scene inspector → Camera)"><span>🎥</span><span class="nm">Camera</span></button>
+        {/if}
         {#each [...scene.items].reverse() as it (it.id)}
           <button class="lab" class:sel={app.selected === it.id} onclick={() => (app.selected = it.id)}>
             <span>{icon(it)}</span><span class="nm">{it.name}</span>
@@ -383,6 +424,13 @@
             <span class="tick" style:left={pct(frames(t))}>{tickLabel(t)}</span>
           {/each}
         </div>
+        {#if camKeys.length}
+          <div class="lane" onpointerdown={scrub} role="presentation">
+            {#each camKeys as f (f)}
+              <button class="kf cam" class:here={f === app.frame} style:left={pct(f)} title="Camera key at {fmtTime(f)}: click to jump, drag to retime" aria-label="Camera key at {fmtTime(f)}" onpointerdown={(e) => dragCamKey(e, f)}></button>
+            {/each}
+          </div>
+        {/if}
         {#each [...scene.items].reverse() as it (it.id)}
           <div class="lane" onpointerdown={scrub} role="presentation">
             <div
@@ -452,6 +500,9 @@
     white-space: nowrap;
     pointer-events: none;
     z-index: 1;
+  }
+  .kf.cam {
+    background: #ffb020;
   }
   .kf {
     position: absolute;

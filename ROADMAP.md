@@ -20,7 +20,7 @@ Ranked by how much they help someone make a finished short video quickly.
 - [x] **Templates.** Ready-made projects such as a two-person chat, a story
       explainer, a reaction video and a podcast, in 9:16 and 16:9, so a video
       takes minutes.
-- [ ] **Camera moves.** One-click zoom punches, shakes, push-ins, pans and quick
+- [x] **Camera moves.** One-click zoom punches, shakes, push-ins, pans and quick
       cuts at the playhead, and an auto camera that cuts to whoever is talking.
 - [ ] **Backgrounds and props packs, and image import.** More original rooms,
       streets, a classroom and outdoor scenes and props, plus your own images as

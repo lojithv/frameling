@@ -92,6 +92,29 @@ pub enum Command {
     /// project's media as `sound-<id>` (kept if already there). Then place it
     /// with addAudio or setMusic.
     AddBuiltinMedia { sound: String },
+    /// A camera preset at `frame` (scene-local) lasting `duration` frames:
+    /// punch, shake, pushIn, pullOut, panTo / cutTo / whipTo (a `target` item)
+    /// or reset. Writes keys on the scene's camera tracks.
+    CameraMove {
+        scene: Id,
+        #[serde(rename = "move")]
+        kind: crate::camera::Move,
+        frame: u32,
+        #[serde(default = "default_move_len")]
+        duration: u32,
+        #[serde(default)]
+        target: Option<Id>,
+        #[serde(default = "one")]
+        strength: f32,
+    },
+    /// Replace a scene's camera keys with an automatic edit of its dialogue:
+    /// `cuts` (close-up of each speaker) or `punches` (zoom beats).
+    AutoCamera {
+        scene: Id,
+        style: crate::camera::AutoStyle,
+        #[serde(default = "one")]
+        strength: f32,
+    },
     /// Set (or with `None`, remove) the background music.
     SetMusic { music: Option<Music> },
     /// Several commands applied as one undo step.
@@ -116,6 +139,12 @@ fn scene_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Scene, String> 
 
 fn yes() -> bool {
     true
+}
+fn one() -> f32 {
+    1.0
+}
+fn default_move_len() -> u32 {
+    20
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -384,6 +413,16 @@ impl Command {
                 c.y = c.y.clamp(0.0, 1.0);
                 c.stroke_width = c.stroke_width.clamp(0.0, 40.0);
                 p.captions = c;
+            }
+            Command::CameraMove { scene, kind, frame, duration, target, strength } => {
+                let snapshot = p.clone();
+                let s = scene_mut(p, scene)?;
+                crate::camera::apply(&snapshot, s, *kind, *frame, *duration, target.as_deref(), *strength)?;
+            }
+            Command::AutoCamera { scene, style, strength } => {
+                let snapshot = p.clone();
+                let s = scene_mut(p, scene)?;
+                crate::camera::auto(&snapshot, s, *style, *strength)?;
             }
             Command::AddBuiltinMedia { sound } => {
                 let id = crate::sfx::media_id(sound);

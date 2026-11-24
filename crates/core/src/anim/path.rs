@@ -20,6 +20,7 @@
 //! | `text.color`, `text.fill`, `text.stroke` | text | `"#rrggbb"` |
 //! | `text.strokeWidth` | text | number, scene px |
 //! | `camera.x`, `camera.y`, `camera.zoom` | scene | number |
+//! | `camera.shake` | scene | number, shake strength in scene px (0 = still) |
 //!
 //! Aliases (`x`, `bone.le`, `look.hair_style`, ...) are accepted and stored
 //! under the canonical path, so one property never ends up with two tracks.
@@ -129,6 +130,7 @@ pub enum Channel {
     CameraX,
     CameraY,
     CameraZoom,
+    CameraShake,
 }
 
 /// What a track is attached to.
@@ -173,6 +175,7 @@ const SIMPLE: &[(&str, &[&str], Channel)] = &[
     ("camera.x", &[], Channel::CameraX),
     ("camera.y", &[], Channel::CameraY),
     ("camera.zoom", &[], Channel::CameraZoom),
+    ("camera.shake", &["shake"], Channel::CameraShake),
 ];
 
 impl Channel {
@@ -215,7 +218,7 @@ impl Channel {
             Channel::X | Channel::Y | Channel::Scale | Channel::ScaleX | Channel::ScaleY | Channel::Rotation | Channel::Opacity | Channel::Flip => Scope::Item,
             Channel::Bone(_) | Channel::Look(_) | Channel::Outfit | Channel::Expression | Channel::View | Channel::Mouth => Scope::Character,
             Channel::TextColor | Channel::TextFill | Channel::TextStroke | Channel::TextStrokeWidth => Scope::Text,
-            Channel::CameraX | Channel::CameraY | Channel::CameraZoom => Scope::Scene,
+            Channel::CameraX | Channel::CameraY | Channel::CameraZoom | Channel::CameraShake => Scope::Scene,
         }
     }
 

@@ -70,6 +70,8 @@ export interface Music {
   trimStart: number;
 }
 
+export type CameraMove = "punch" | "shake" | "pushIn" | "pullOut" | "panTo" | "cutTo" | "whipTo" | "reset";
+
 /** A built-in sound effect or music loop (crates/core/src/sfx.rs). */
 export interface SoundInfo { id: string; name: string; kind: "effect" | "music"; category: string; secs: number; looped: boolean }
 
@@ -313,5 +315,7 @@ export type Command =
   | { op: "defineOutfit"; scene: Id; item: Id; name: string; outfit: LookPatch | null }
   | { op: "setCaptions"; captions: Captions }
   | { op: "setMusic"; music: Music | null }
+  | { op: "cameraMove"; scene: Id; move: CameraMove; frame: number; duration?: number; target?: Id | null; strength?: number }
+  | { op: "autoCamera"; scene: Id; style: "cuts" | "punches"; strength?: number }
   | { op: "addBuiltinMedia"; sound: string }
   | { op: "batch"; commands: Command[] };

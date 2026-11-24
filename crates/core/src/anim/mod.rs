@@ -248,6 +248,11 @@ pub fn view(c: &CharacterItem, tracks: &Tracks, frame: u32) -> crate::model::Vie
         .unwrap_or(c.view)
 }
 
+/// Keyed camera shake strength (0 when none).
+pub fn camera_shake(scene: &Scene, frame: u32) -> f32 {
+    number(&scene.tracks, Channel::CameraShake, frame as f32).unwrap_or(0.0).max(0.0)
+}
+
 /// Camera tracks override the scene's from/to move channel by channel.
 pub fn camera(scene: &Scene, base: CamKey, frame: u32) -> CamKey {
     let t = &scene.tracks;

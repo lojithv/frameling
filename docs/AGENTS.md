@@ -99,6 +99,8 @@ All times are **frames** (project fps, default 30). Positions are stage pixels o
 {"op":"moveKeys","scene":"s1","item":"maya","from":0,"to":90,"paths":["transform.x","transform.y"]}   // retime a moment (paths optional = every track)
 {"op":"defineOutfit","scene":"s1","item":"leo","name":"suit","outfit":{"top":"#222222","accessory":"tie"}}   // outfit null removes
 {"op":"setCaptions","captions":{CAPTIONS}}   // auto subtitles from the voice lines
+{"op":"cameraMove","scene":"s1","move":"punch|shake|pushIn|pullOut|panTo|cutTo|whipTo|reset","frame":45,"duration":20,"target":"maya","strength":1}
+{"op":"autoCamera","scene":"s1","style":"cuts|punches","strength":1}   // replaces the scene's camera keys: follow the speaker / punch on lines
 {"op":"addBuiltinMedia","sound":"whoosh"}   // built-in sound or music loop -> media "sound-whoosh" (see below)
 {"op":"setMusic","music":{MUSIC}}            // background music for the whole movie (null removes)
 {"op":"batch","commands":[...]}

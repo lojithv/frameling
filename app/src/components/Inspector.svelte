@@ -102,6 +102,33 @@
     base.enabled = !base.enabled;
     run({ op: "setCaptions", captions: base });
   }
+  // ------------------------------------------------------------ camera moves
+  const CAM_MOVES: { id: import("../lib/types").CameraMove; label: string; hint: string; needs?: boolean }[] = [
+    { id: "punch", label: "Zoom punch", hint: "Quick zoom in, ease back out" },
+    { id: "shake", label: "Shake", hint: "Shake the camera for a moment" },
+    { id: "pushIn", label: "Push in", hint: "Slow zoom in (towards the target if one is picked)" },
+    { id: "pullOut", label: "Pull out", hint: "Slow zoom out" },
+    { id: "panTo", label: "Pan to", hint: "Smooth pan to the target", needs: true },
+    { id: "cutTo", label: "Cut to", hint: "Instant cut to a close-up of the target", needs: true },
+    { id: "whipTo", label: "Whip to", hint: "Very fast pan to the target", needs: true },
+    { id: "reset", label: "Wide shot", hint: "Cut back to the scene's wide view" },
+  ];
+  let camTarget = $state("");
+  let camStrength = $state(1);
+  const hasCamKeys = $derived(Object.keys(scene?.tracks ?? {}).some((p) => p.startsWith("camera.")));
+  $effect(() => {
+    // Default the target to the selected (or first) character.
+    if (!camTarget && scene) camTarget = scene.items.find((i) => i.kind.type === "character")?.id ?? "";
+  });
+  function camMove(m: import("../lib/types").CameraMove) {
+    if (!scene) return;
+    const dur = m === "shake" ? frames(0.5) : m === "punch" ? frames(0.6) : frames(1.2);
+    run({ op: "cameraMove", scene: scene.id, move: m, frame: app.frame, duration: dur, target: camTarget || null, strength: camStrength });
+  }
+  function autoCam(style: "cuts" | "punches") {
+    if (!scene) return;
+    if (run({ op: "autoCamera", scene: scene.id, style, strength: camStrength })) toast(style === "cuts" ? "The camera now cuts to whoever is talking." : "The camera now punches in on every line.");
+  }
   function editMusic(fn: (m: import("../lib/types").Music) => void, key?: string) {
     if (!project?.music) return;
     const m = structuredClone($state.snapshot(project.music)) as import("../lib/types").Music;
@@ -628,6 +655,32 @@
       {@render slider("Zoom", scene.camera.from.zoom, 0.5, 3, 0.01, "cz0", (v) => editScene((s) => (s.camera.from.zoom = v), "cz0"), (v) => `${v.toFixed(2)}×`)}
       {@render slider("Pan X", scene.camera.from.x, 0, 1280, 1, "cx0", (v) => editScene((s) => (s.camera.from.x = v), "cx0"))}
       {@render slider("Pan Y", scene.camera.from.y, 0, 720, 1, "cy0", (v) => editScene((s) => (s.camera.from.y = v), "cy0"))}
+      <h4>Moves at {fmtTime(app.frame)}</h4>
+      <div class="chips cam">
+        {#each CAM_MOVES as m}
+          <button title={m.hint} disabled={m.needs && !camTarget} onclick={() => camMove(m.id)}>{m.label}</button>
+        {/each}
+      </div>
+      <div class="row2">
+        <label class="field"><span>Target</span>
+          <select value={camTarget} onchange={(e) => (camTarget = (e.target as HTMLSelectElement).value)}>
+            <option value="">(none)</option>
+            {#each scene.items.filter((i) => i.kind.type !== "text") as it}<option value={it.id}>{it.name || it.id}</option>{/each}
+          </select>
+        </label>
+        <label class="field"><span>Strength</span>
+          <select value={String(camStrength)} onchange={(e) => (camStrength = +(e.target as HTMLSelectElement).value)}>
+            <option value="0.6">Gentle</option><option value="1">Normal</option><option value="1.6">Strong</option>
+          </select>
+        </label>
+      </div>
+      <h4>Auto camera</h4>
+      <div class="chips">
+        <button title="Cut to a close-up of whoever is talking (great for vertical videos)" onclick={() => autoCam("cuts")}>🎬 Follow the speaker</button>
+        <button title="Stay wide and punch in on every line and exclamation" onclick={() => autoCam("punches")}>💥 Punch on lines</button>
+        {#if hasCamKeys}<button title="Remove every camera key in this scene" onclick={() => run({ op: "deleteKeys", scene: scene.id, item: null })}>Clear camera keys</button>{/if}
+      </div>
+      <p class="hint small">Moves become camera keyframes you can retime or delete. Auto camera replaces this scene's camera keys.</p>
       {#if scene.camera.moving}
         <h4>End</h4>
         {@render slider("Zoom", scene.camera.to.zoom, 0.5, 3, 0.01, "cz1", (v) => editScene((s) => (s.camera.to.zoom = v), "cz1"), (v) => `${v.toFixed(2)}×`)}
@@ -1080,6 +1133,9 @@
   .danger:hover {
     border-color: #e84a5f;
     color: #ff8a98;
+  }
+  .cam button:disabled {
+    opacity: 0.4;
   }
   .visemes button {
     padding: 4px 8px;

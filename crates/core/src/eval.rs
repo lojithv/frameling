@@ -114,7 +114,11 @@ pub fn camera_transform(project: &Project, scene: &Scene, local: u32) -> Affine 
     let k = camera_at(scene, local);
     let (w, h) = (project.width as f32, project.height as f32);
     let z = k.zoom.max(0.05) * view_scale(project);
-    Affine::translate(w / 2.0, h / 2.0).then(&Affine::scale(z, z)).then(&Affine::translate(-k.x, -k.y))
+    let (sx, sy, roll) = crate::camera::shake(anim::camera_shake(scene, local), local, hash_str(&scene.id));
+    Affine::translate(w / 2.0, h / 2.0)
+        .then(&Affine::rotate_deg(roll))
+        .then(&Affine::scale(z, z))
+        .then(&Affine::translate(-k.x - sx, -k.y - sy))
 }
 
 fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Vec<Op>, Vec<ItemHit>) {
