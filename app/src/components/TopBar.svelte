@@ -3,7 +3,7 @@
   import { openProject, openPath, saveProject, isDesktop } from "../lib/platform";
   import { play, stop } from "../lib/playback";
 
-  let { onExport }: { onExport: () => void } = $props();
+  let { onExport, onTemplates }: { onExport: () => void; onTemplates: () => void } = $props();
   let menu = $state(false);
 
   function newProject(demo: boolean) {
@@ -52,6 +52,7 @@
       {#if menu}
         <div class="menu" role="menu">
           <button onclick={() => newProject(false)}>New blank project</button>
+          <button onclick={() => { menu = false; onTemplates(); }}>New from template…</button>
           <button onclick={() => newProject(true)}>New from demo</button>
           <hr />
           <button onclick={() => { menu = false; openProject(); }}>Open… <kbd>Ctrl O</kbd></button>

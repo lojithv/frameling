@@ -46,6 +46,25 @@ impl Engine {
         self.editor.load(demo::demo_project());
     }
 
+    /// Templates (id, name, description, best shape) as JSON.
+    pub fn templates(&self) -> String {
+        serde_json::to_string(&frameling_core::templates::catalog()).unwrap_or_default()
+    }
+
+    /// Replace the document with a template laid out for `shape` (vertical, wide, square).
+    pub fn load_template(&mut self, id: &str, shape: &str) -> Result<(), JsError> {
+        let p = frameling_core::templates::build(id, shape).ok_or_else(|| JsError::new(&format!("no template {id:?}")))?;
+        self.editor.load(p);
+        Ok(())
+    }
+
+    /// A template's first scene, a little way in, as RGBA pixels (the picker's thumbnails).
+    pub fn template_thumb(&self, id: &str, shape: &str, width: u32, height: u32) -> Vec<u8> {
+        let Some(p) = frameling_core::templates::build_with(id, shape, false) else { return vec![] };
+        let f = (p.fps * 2).min(p.scenes.first().map_or(1, |s| s.duration.saturating_sub(1)));
+        frameling_render::render(&frameling_core::evaluate(&p, &self.lib, f), width, height)
+    }
+
     pub fn load_blank(&mut self) {
         self.editor.load(demo::blank_project());
     }

@@ -21,6 +21,7 @@ pub mod poses;
 pub mod rig;
 pub mod sfx;
 pub mod stick;
+pub mod templates;
 pub mod text;
 
 pub use anim::{Interp, Key, Track, Tracks};

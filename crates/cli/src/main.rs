@@ -9,6 +9,8 @@
 //!                                                   add a spoken, lip-synced line (placed after the last one)
 //!   frameling script <screenplay.txt> <out.frameling> [--bubbles]   script-to-video
 //!   frameling mcp <project.frameling>              MCP server for AI agents (stdio); see docs/AGENTS.md
+//!   frameling new <template> <out.frameling> [--shape vertical|wide|square]   start from a template
+//!   frameling templates                             list templates
 //!   frameling sheet <out.png>                       contact sheet of every action and expression (dev aid)
 //!   frameling mouths <out.png>                      every lip-sync mouth shape of every mouth set (dev aid)
 
@@ -168,6 +170,19 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
             let path = pos.get(1).ok_or("usage: frameling mcp <project.frameling>")?;
             let server = mcp::Server::new(PathBuf::from(path.as_str()), library(&args)?, tts_engine(&args))?;
             mcp::serve(server)?;
+        }
+        Some("templates") => {
+            for t in frameling_core::templates::catalog() {
+                println!("{:<12} {} ({}): {}", t.id, t.name, t.best, t.description);
+            }
+        }
+        Some("new") => {
+            let id = pos.get(1).ok_or("missing template (see: frameling templates)")?;
+            let out = pos.get(2).ok_or("missing output")?;
+            let shape = flag(&args, "--shape").unwrap_or_else(|| "vertical".into());
+            let p = frameling_core::templates::build(id, &shape).ok_or_else(|| format!("no template {id:?}"))?;
+            std::fs::write(out.as_str(), p.to_json_pretty()).map_err(|e| e.to_string())?;
+            println!("wrote {out} ({}, {}x{})", p.name, p.width, p.height);
         }
         Some("sheet") => {
             let out = pos.get(1).ok_or("missing output")?;
