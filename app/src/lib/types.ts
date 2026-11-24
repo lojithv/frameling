@@ -52,7 +52,26 @@ export interface Project {
   actions?: Record<Id, { id: string; name: string; duration: number; loop: boolean; keys: unknown[] }>;
   /** Auto subtitles (absent = defaults, off). */
   captions?: Captions;
+  /** Background music across the whole movie. */
+  music?: Music | null;
 }
+
+/** Background music (crates/core/src/model.rs `Music`). */
+export interface Music {
+  media: Id;
+  volume: number;
+  /** Volume multiplier while voices play (1 = no ducking). */
+  duck: number;
+  fadeIn: number;
+  fadeOut: number;
+  looped: boolean;
+  /** Global frame it starts at. */
+  start: number;
+  trimStart: number;
+}
+
+/** A built-in sound effect or music loop (crates/core/src/sfx.rs). */
+export interface SoundInfo { id: string; name: string; kind: "effect" | "music"; category: string; secs: number; looped: boolean }
 
 export interface Scene {
   id: Id;
@@ -243,7 +262,20 @@ export interface Voice { id: string; name: string; language: string; engine: "su
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface ItemHit { id: Id; bounds: Rect; visible: boolean }
 
-export interface AudioEvent { media: Id; at: number; trim: number; frames: number; volume: number }
+export interface AudioEvent {
+  media: Id;
+  at: number;
+  trim: number;
+  frames: number;
+  volume: number;
+  looped?: boolean;
+  fadeIn?: number;
+  fadeOut?: number;
+  /** Global frame spans where voices play; the gain ducks to duckLevel there. */
+  ducks?: [number, number][];
+  duckLevel?: number;
+  duckRamp?: number;
+}
 
 export interface CatalogEntry { id: string; name: string; category: string; colors: string[]; pack: string }
 export interface Catalog {
@@ -280,4 +312,6 @@ export type Command =
   | { op: "setInterpolation"; scene: Id; item?: Id | null; path: string; frames?: number[] | null; interp: Interp }
   | { op: "defineOutfit"; scene: Id; item: Id; name: string; outfit: LookPatch | null }
   | { op: "setCaptions"; captions: Captions }
+  | { op: "setMusic"; music: Music | null }
+  | { op: "addBuiltinMedia"; sound: string }
   | { op: "batch"; commands: Command[] };

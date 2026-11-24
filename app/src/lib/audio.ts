@@ -76,6 +76,12 @@ export async function mediaFromBytes(bytes: ArrayBuffer, name: string, mime: str
   };
 }
 
+/** Preview a built-in sound effect or music loop. */
+export async function previewSound(id: string) {
+  const wav = eng().sound_wav(id);
+  if (wav) await previewBytes(wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength) as ArrayBuffer);
+}
+
 /** Play raw audio bytes once (voice previews). */
 export async function previewBytes(bytes: ArrayBuffer) {
   stopAudio();
@@ -146,6 +152,67 @@ export async function getBuffer(mediaId: string): Promise<AudioBuffer | null> {
   }
 }
 
+/** Volume at a (fractional) frame: volume x fades x ducking. Mirrors AudioEvent::gain in crates/core/src/eval.rs. */
+export function eventGain(ev: AudioEvent, f: number): number {
+  const start = ev.at;
+  const end = ev.at + ev.frames;
+  let g = ev.volume;
+  if (ev.fadeIn) g *= Math.min(1, Math.max(0, (f - start) / ev.fadeIn));
+  if (ev.fadeOut) g *= Math.min(1, Math.max(0, (end - f) / ev.fadeOut));
+  if (ev.ducks?.length) {
+    const r = Math.max(1, ev.duckRamp ?? 1);
+    let w = 0;
+    for (const [a, b] of ev.ducks) w += Math.min(1, Math.max(0, (f - (a - r)) / r)) * Math.min(1, Math.max(0, (b + r - f) / r));
+    g *= 1 - (1 - (ev.duckLevel ?? 1)) * Math.min(1, w);
+  }
+  return g;
+}
+
+/** Frames where the gain curve bends (mirrors AudioEvent::gain_points). */
+function gainPoints(ev: AudioEvent): number[] {
+  const r = Math.max(1, ev.duckRamp ?? 1);
+  const end = ev.at + ev.frames;
+  const v = [ev.at, ev.at + Math.min(ev.fadeIn ?? 0, ev.frames), end - (ev.fadeOut ?? 0), end];
+  for (const [a, b] of ev.ducks ?? []) v.push(a - r, a, b, b + r);
+  return [...new Set(v.filter((f) => f >= ev.at && f <= end))].sort((a, b) => a - b);
+}
+
+/** Automate a gain node with the event's curve. `t0` = context time of frame `from`. */
+function automate(gain: AudioParam, ev: AudioEvent, from: number, t0: number, fps: number) {
+  const shaped = ev.fadeIn || ev.fadeOut || ev.ducks?.length;
+  if (!shaped) {
+    gain.value = ev.volume;
+    return;
+  }
+  const first = Math.max(from, ev.at);
+  gain.setValueAtTime(eventGain(ev, first), t0 + (first - from) / fps);
+  for (const f of gainPoints(ev)) {
+    if (f <= first) continue;
+    gain.linearRampToValueAtTime(eventGain(ev, f), t0 + (f - from) / fps);
+  }
+}
+
+/** A source for an event, looping the media from its trim point when asked. */
+function source(c: BaseAudioContext, buf: AudioBuffer, ev: AudioEvent): AudioBufferSourceNode {
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  if (ev.looped) {
+    src.loop = true;
+    src.loopStart = ev.trim / (app.project?.fps ?? 30);
+    src.loopEnd = buf.duration;
+  }
+  return src;
+}
+
+/** Where to start reading the media `skip` frames into an event (wrapping when it loops). */
+function offset(buf: AudioBuffer, ev: AudioEvent, skip: number, fps: number): number {
+  const t = (ev.trim + skip) / fps;
+  if (!ev.looped) return t;
+  const a = ev.trim / fps;
+  const len = Math.max(0.01, buf.duration - a);
+  return t < buf.duration ? t : a + ((t - a) % len);
+}
+
 /** Start playing the given events from `fromFrame` (same timeline the events use). */
 export async function playEvents(events: AudioEvent[], fromFrame: number) {
   stopAudio();
@@ -158,14 +225,13 @@ export async function playEvents(events: AudioEvent[], fromFrame: number) {
     if (end <= fromFrame) continue;
     const buf = await getBuffer(ev.media);
     if (!buf) continue;
-    const src = c.createBufferSource();
-    src.buffer = buf;
+    const src = source(c, buf, ev);
     const gain = c.createGain();
-    gain.gain.value = ev.volume;
+    automate(gain.gain, ev, fromFrame, t0, fps);
     src.connect(gain).connect(c.destination);
     const skip = Math.max(0, fromFrame - ev.at);
     const when = t0 + Math.max(0, ev.at - fromFrame) / fps;
-    src.start(when, (ev.trim + skip) / fps, (ev.frames - skip) / fps);
+    src.start(when, offset(buf, ev, skip, fps), (ev.frames - skip) / fps);
     playing.push(src);
   }
 }
@@ -189,10 +255,9 @@ export async function mixdown(events: AudioEvent[], totalFrames: number, fps: nu
   for (const ev of events) {
     const buf = await getBuffer(ev.media);
     if (!buf) continue;
-    const src = off.createBufferSource();
-    src.buffer = buf;
+    const src = source(off, buf, ev);
     const g = off.createGain();
-    g.gain.value = ev.volume;
+    automate(g.gain, ev, 0, 0, fps);
     src.connect(g).connect(off.destination);
     src.start(ev.at / fps, ev.trim / fps, ev.frames / fps);
   }

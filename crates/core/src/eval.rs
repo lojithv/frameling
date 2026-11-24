@@ -540,7 +540,7 @@ fn text_ops(t: &TextItem, secs: f32, until_end: Option<f32>, id: &str) -> Vec<Op
 }
 
 // A sound to mix into the export.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioEvent {
     pub media: Id,
@@ -551,11 +551,118 @@ pub struct AudioEvent {
     /// Frames to play.
     pub frames: u32,
     pub volume: f32,
+    /// Repeat the media (from `trim`) until `frames` are filled.
+    #[serde(skip_serializing_if = "is_false")]
+    pub looped: bool,
+    /// Fade in / out, frames.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub fade_in: u32,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub fade_out: u32,
+    /// Ducking: global frame spans `[from, to)` where voices play. The gain
+    /// ramps down to `duck_level` over `duck_ramp` frames before each span
+    /// and back up after it (see [`AudioEvent::gain`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ducks: Vec<[u32; 2]>,
+    pub duck_level: f32,
+    pub duck_ramp: u32,
 }
 
-/// All audio on the global timeline, clipped to scene boundaries.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl AudioEvent {
+    /// Volume multiplier at global frame `f` (fractional): volume x fades x
+    /// ducking. Every player uses this same curve: the editor and web export
+    /// sample it as gain automation, the native export writes it as an FFmpeg
+    /// expression (`frameling_export`).
+    pub fn gain(&self, f: f32) -> f32 {
+        let start = self.at as f32;
+        let end = (self.at + self.frames) as f32;
+        let mut g = self.volume;
+        if self.fade_in > 0 {
+            g *= ((f - start) / self.fade_in as f32).clamp(0.0, 1.0);
+        }
+        if self.fade_out > 0 {
+            g *= ((end - f) / self.fade_out as f32).clamp(0.0, 1.0);
+        }
+        g * self.duck_factor(f)
+    }
+
+    /// The ducking part of the gain alone.
+    pub fn duck_factor(&self, f: f32) -> f32 {
+        let r = self.duck_ramp.max(1) as f32;
+        let mut w = 0.0;
+        for &[a, b] in &self.ducks {
+            w += (((f - (a as f32 - r)) / r).clamp(0.0, 1.0)) * ((((b as f32 + r) - f) / r).clamp(0.0, 1.0));
+        }
+        1.0 - (1.0 - self.duck_level) * w.min(1.0)
+    }
+
+    /// Frames where the gain curve bends, sorted: sampling the gain there and
+    /// ramping linearly in between reproduces it.
+    pub fn gain_points(&self) -> Vec<u32> {
+        let r = self.duck_ramp.max(1);
+        let end = self.at + self.frames;
+        let mut v = vec![self.at, self.at + self.fade_in.min(self.frames), end.saturating_sub(self.fade_out), end];
+        for &[a, b] in &self.ducks {
+            v.extend([a.saturating_sub(r), a, b, b + r]);
+        }
+        v.retain(|&f| f >= self.at && f <= end);
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+}
+
+/// Global frame spans where someone speaks: clips with a speaker, recordings
+/// and typed lines. Spans closer than `gap` frames are merged, so music
+/// doesn't pump up between the lines of a conversation.
+pub fn voice_spans(project: &Project, gap: u32) -> Vec<[u32; 2]> {
+    let mut spans: Vec<[u32; 2]> = Vec::new();
+    for (scene, start) in project.scenes.iter().zip(project.scene_starts()) {
+        for clip in &scene.audio {
+            let Some(media) = project.media.get(&clip.media) else { continue };
+            let voice = clip.speaker.is_some() || matches!(media.source, Some(MediaSource::Tts { .. }) | Some(MediaSource::Recording));
+            if !voice || clip.start >= scene.duration {
+                continue;
+            }
+            let frames = clip.play_frames(media).min(scene.duration - clip.start);
+            // Skip silent lead-in and tail of the line.
+            let env = &media.envelope;
+            let from = clip.trim_start as usize;
+            let to = from + frames as usize;
+            let voiced = |i: &usize| env.get(*i).is_some_and(|&v| v > 0.08);
+            let (a, b) = match ((from..to).find(voiced), (from..to).rev().find(voiced)) {
+                (Some(a), Some(b)) => (a as u32 - clip.trim_start, b as u32 + 1 - clip.trim_start),
+                _ if env.is_empty() => (0, frames),
+                _ => continue,
+            };
+            spans.push([start + clip.start + a, start + clip.start + b]);
+        }
+    }
+    spans.sort_unstable();
+    let mut out: Vec<[u32; 2]> = Vec::new();
+    for s in spans {
+        match out.last_mut() {
+            Some(last) if s[0] <= last[1] + gap => last[1] = last[1].max(s[1]),
+            _ => out.push(s),
+        }
+    }
+    out
+}
+
+/// All audio on the global timeline, clipped to scene boundaries, plus the
+/// background music.
 pub fn audio_events(project: &Project) -> Vec<AudioEvent> {
     let mut out = Vec::new();
+    if let Some(ev) = music_event(project) {
+        out.push(ev);
+    }
     for (scene, start) in project.scenes.iter().zip(project.scene_starts()) {
         for clip in &scene.audio {
             let Some(media) = project.media.get(&clip.media) else { continue };
@@ -566,10 +673,38 @@ pub fn audio_events(project: &Project) -> Vec<AudioEvent> {
             if frames == 0 {
                 continue;
             }
-            out.push(AudioEvent { media: clip.media.clone(), at: start + clip.start, trim: clip.trim_start, frames, volume: clip.volume.max(0.0) });
+            out.push(AudioEvent { media: clip.media.clone(), at: start + clip.start, trim: clip.trim_start, frames, volume: clip.volume.max(0.0), ..Default::default() });
         }
     }
     out
+}
+
+/// The background music as an audio event (with its ducking under voices).
+pub fn music_event(project: &Project) -> Option<AudioEvent> {
+    let m = project.music.as_ref()?;
+    let media = project.media.get(&m.media)?;
+    let total = project.total_frames();
+    if m.start >= total || media.duration_frames <= m.trim_start {
+        return None;
+    }
+    let avail = media.duration_frames - m.trim_start;
+    let frames = if m.looped { total - m.start } else { avail.min(total - m.start) };
+    let fps = project.fps.max(1);
+    let ramp = (fps / 4).max(1);
+    let ducks = if m.duck < 0.999 { voice_spans(project, fps * 3 / 4 + 2 * ramp) } else { vec![] };
+    Some(AudioEvent {
+        media: m.media.clone(),
+        at: m.start,
+        trim: m.trim_start,
+        frames,
+        volume: m.volume.max(0.0),
+        looped: m.looped && avail < frames,
+        fade_in: m.fade_in.min(frames / 2),
+        fade_out: m.fade_out.min(frames / 2),
+        ducks,
+        duck_level: m.duck.clamp(0.0, 1.0),
+        duck_ramp: ramp,
+    })
 }
 
 /// One item on its own, fitted into `width` x `height` on a transparent

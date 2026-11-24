@@ -106,6 +106,16 @@ impl Engine {
         self.editor.dirty = false;
     }
 
+    /// Built-in sound effects and music loops (id, name, kind, category, secs) as JSON.
+    pub fn sound_catalog(&self) -> String {
+        serde_json::to_string(&frameling_core::sfx::catalog()).unwrap_or_default()
+    }
+
+    /// A built-in sound as WAV bytes (previews).
+    pub fn sound_wav(&self, id: &str) -> Option<Vec<u8>> {
+        frameling_core::sfx::render(id)
+    }
+
     /// Library catalogue (props, backgrounds, actions, packs) as JSON.
     pub fn catalog(&self) -> String {
         self.lib.catalog().to_string()

@@ -40,6 +40,35 @@ pub struct Project {
     /// Auto subtitles from the voice lines.
     #[serde(default, skip_serializing_if = "is_default")]
     pub captions: Captions,
+    /// Background music for the whole movie, quieter under voices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music: Option<Music>,
+}
+
+/// A music track that plays across every scene (global timeline), fading in
+/// and out and ducking (getting quieter) while anyone speaks.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Music {
+    pub media: Id,
+    pub volume: f32,
+    /// Volume multiplier while a voice line plays (1 = no ducking).
+    pub duck: f32,
+    /// Fade in / out lengths in frames.
+    pub fade_in: u32,
+    pub fade_out: u32,
+    /// Repeat the music to fill the movie.
+    pub looped: bool,
+    /// Global frame the music starts at.
+    pub start: u32,
+    /// Frames to skip at the beginning of the media.
+    pub trim_start: u32,
+}
+
+impl Default for Music {
+    fn default() -> Self {
+        Music { media: String::new(), volume: 0.5, duck: 0.3, fade_in: 15, fade_out: 45, looped: true, start: 0, trim_start: 0 }
+    }
 }
 
 impl Default for Project {
@@ -57,6 +86,7 @@ impl Default for Project {
             poses: BTreeMap::new(),
             actions: BTreeMap::new(),
             captions: Captions::default(),
+            music: None,
         }
     }
 }

@@ -88,6 +88,12 @@ pub enum Command {
     AddAction { action: crate::pack::ActionDef },
     /// Replace the auto subtitle settings.
     SetCaptions { captions: Captions },
+    /// Add a built-in sound effect or music loop (`sfx::catalog`) to the
+    /// project's media as `sound-<id>` (kept if already there). Then place it
+    /// with addAudio or setMusic.
+    AddBuiltinMedia { sound: String },
+    /// Set (or with `None`, remove) the background music.
+    SetMusic { music: Option<Music> },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
 }
@@ -206,7 +212,7 @@ impl Command {
                 p.media.insert(media.id.clone(), Arc::new(media.clone()));
             }
             Command::RemoveMedia { id } => {
-                let used = p.scenes.iter().any(|s| s.audio.iter().any(|c| &c.media == id));
+                let used = p.scenes.iter().any(|s| s.audio.iter().any(|c| &c.media == id)) || p.music.as_ref().is_some_and(|m| &m.media == id);
                 if used {
                     return Err("this sound is still used in a scene".into());
                 }
@@ -378,6 +384,26 @@ impl Command {
                 c.y = c.y.clamp(0.0, 1.0);
                 c.stroke_width = c.stroke_width.clamp(0.0, 40.0);
                 p.captions = c;
+            }
+            Command::AddBuiltinMedia { sound } => {
+                let id = crate::sfx::media_id(sound);
+                if !p.media.contains_key(&id) {
+                    let m = crate::sfx::media(sound, p.fps).ok_or_else(|| format!("no built-in sound {sound:?}"))?;
+                    p.media.insert(id, Arc::new(m));
+                }
+            }
+            Command::SetMusic { music } => {
+                if let Some(m) = music {
+                    if !p.media.contains_key(&m.media) {
+                        return Err(format!("no media {:?}", m.media));
+                    }
+                    let mut m = m.clone();
+                    m.volume = m.volume.clamp(0.0, 2.0);
+                    m.duck = m.duck.clamp(0.0, 1.0);
+                    p.music = Some(m);
+                } else {
+                    p.music = None;
+                }
             }
             Command::AddPose { pose } => {
                 check_id(&pose.id)?;

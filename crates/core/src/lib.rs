@@ -19,6 +19,7 @@ pub mod pack;
 pub mod parts;
 pub mod poses;
 pub mod rig;
+pub mod sfx;
 pub mod stick;
 pub mod text;
 

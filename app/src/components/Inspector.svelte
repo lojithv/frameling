@@ -102,6 +102,12 @@
     base.enabled = !base.enabled;
     run({ op: "setCaptions", captions: base });
   }
+  function editMusic(fn: (m: import("../lib/types").Music) => void, key?: string) {
+    if (!project?.music) return;
+    const m = structuredClone($state.snapshot(project.music)) as import("../lib/types").Music;
+    fn(m);
+    run({ op: "setMusic", music: m }, key);
+  }
   const isVoiceLine = (c: AudioClip) => project?.media[c.media]?.source?.kind === "tts";
   const lineText = (c: AudioClip) => {
     const s = project?.media[c.media]?.source;
@@ -667,6 +673,25 @@
         {/if}
       </section>
     {/if}
+    <section class="music">
+      <h3>Music</h3>
+      {#if project.music}
+        {@const m = project.music}
+        <div class="clip"><span>🎵 {project.media[m.media]?.name ?? "missing"}</span>
+          <button class="x" title="Remove the music" onclick={() => run({ op: "setMusic", music: null })}>✕</button></div>
+        {@render slider("Volume", m.volume, 0, 1.5, 0.01, "mvol", (v) => editMusic((n) => (n.volume = v), "mvol"), (v) => `${Math.round(v * 100)}%`)}
+        {@render slider("Under voices", m.duck, 0, 1, 0.01, "mduck", (v) => editMusic((n) => (n.duck = v), "mduck"), (v) => (v >= 0.995 ? "no ducking" : `${Math.round(v * 100)}%`))}
+        {@render slider("Fade in", m.fadeIn, 0, frames(5), 1, "mfi", (v) => editMusic((n) => (n.fadeIn = v), "mfi"), (v) => `${secs(v).toFixed(1)}s`)}
+        {@render slider("Fade out", m.fadeOut, 0, frames(8), 1, "mfo", (v) => editMusic((n) => (n.fadeOut = v), "mfo"), (v) => `${secs(v).toFixed(1)}s`)}
+        <div class="row2">
+          <label class="field num"><span>Starts at (s)</span><input type="number" step="0.1" min="0" value={secs(m.start).toFixed(1)} onchange={(e) => editMusic((n) => (n.start = Math.max(0, frames(+(e.target as HTMLInputElement).value))))} /></label>
+          <label class="check"><input type="checkbox" checked={m.looped} onchange={() => editMusic((n) => (n.looped = !n.looped))} /> Loop to the end</label>
+        </div>
+        <p class="hint small">Plays under every scene and dips to "Under voices" while anyone talks.</p>
+      {:else}
+        <p class="hint">No background music. Pick a loop or use an imported file in the Sound tab.</p>
+      {/if}
+    </section>
     <section>
       <h3>Sounds in this scene</h3>
       {#each scene.audio as c (c.id)}

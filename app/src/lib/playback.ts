@@ -36,6 +36,12 @@ export function play(mode: "scene" | "all" = app.playMode) {
         return { media: c.media, at: c.start, trim: c.trimStart, frames, volume: c.volume };
       })
       .filter((e) => e.frames > 0);
+    // The movie's music, as heard during this scene.
+    const off = sceneStarts()[app.sceneIndex];
+    const music = (JSON.parse(eng().audio_events()) as AudioEvent[]).find((e) => p.music && e.media === p.music.media && (e.looped || e.ducks || e.fadeIn !== undefined || e.frames > 0) && e.at === p.music.start);
+    if (music) {
+      events.push({ ...music, at: music.at - off, ducks: music.ducks?.map(([a, b]) => [a - off, b - off] as [number, number]) });
+    }
   }
   playEvents(events, start);
   const t0 = performance.now();
