@@ -12,9 +12,11 @@
   import ExportDialog from "./components/ExportDialog.svelte";
   import CharacterCreator from "./components/CharacterCreator.svelte";
   import TemplatePicker from "./components/TemplatePicker.svelte";
+  import ScriptDialog from "./components/ScriptDialog.svelte";
 
   let exportOpen = $state(false);
   let templatesOpen = $state(false);
+  let scriptOpen = $state(false);
   let error = $state<string | null>(null);
 
   onMount(() => {
@@ -88,7 +90,7 @@
   <div class="boot"><div class="spinner"></div>Loading Frameling…</div>
 {:else}
   <div class="shell">
-    <TopBar onExport={() => (exportOpen = true)} onTemplates={() => (templatesOpen = true)} />
+    <TopBar onExport={() => (exportOpen = true)} onTemplates={() => (templatesOpen = true)} onScript={() => (scriptOpen = true)} />
     <div class="main">
       <Library />
       <div class="center">
@@ -100,6 +102,7 @@
   </div>
   <ExportDialog bind:open={exportOpen} />
   <TemplatePicker bind:open={templatesOpen} />
+  <ScriptDialog bind:open={scriptOpen} />
   {#if app.creator}
     {#key app.creator}<CharacterCreator />{/key}
   {/if}

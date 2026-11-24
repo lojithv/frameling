@@ -46,6 +46,14 @@ impl Engine {
         self.editor.load(demo::demo_project());
     }
 
+    /// Script to video, step 1: cast and lay out a screenplay. `opts_json` is
+    /// `script::Options`; returns `script::Plan` (project + lines to voice) as JSON.
+    pub fn script_plan(&self, src: &str, opts_json: &str) -> Result<String, JsError> {
+        let opts: frameling_core::script::Options = serde_json::from_str(opts_json).map_err(err)?;
+        let plan = frameling_core::script::plan(src, &self.lib, &opts).map_err(err)?;
+        serde_json::to_string(&plan).map_err(err)
+    }
+
     /// Templates (id, name, description, best shape) as JSON.
     pub fn templates(&self) -> String {
         serde_json::to_string(&frameling_core::templates::catalog()).unwrap_or_default()

@@ -25,7 +25,7 @@ Ranked by how much they help someone make a finished short video quickly.
 - [x] **Backgrounds and props packs, and image import.** More original rooms,
       streets, a classroom and outdoor scenes and props, plus your own images as
       backgrounds or items on stage.
-- [ ] **Script to video.** Paste a dialogue script in the editor and get the
+- [x] **Script to video.** Paste a dialogue script in the editor and get the
       cast, voices, lip sync, subtitles and a rough animation generated.
 - [ ] **Export presets.** One-click exports for vertical shorts, YouTube and
       square posts, with subtitles burned in, plus a thumbnail image.

@@ -7,7 +7,7 @@
 //!   frameling voices [--tts DIR]                    list text-to-speech voices
 //!   frameling say <project> <scene-id> <character-id> "line" [--voice ID --speed 1.0 --out FILE --tts DIR]
 //!                                                   add a spoken, lip-synced line (placed after the last one)
-//!   frameling script <screenplay.txt> <out.frameling> [--bubbles]   script-to-video
+//!   frameling script <screenplay.txt> <out.frameling> [--bubbles --shape vertical|wide|square --music ID|--no-music]   script-to-video
 //!   frameling mcp <project.frameling>              MCP server for AI agents (stdio); see docs/AGENTS.md
 //!   frameling new <template> <out.frameling> [--shape vertical|wide|square]   start from a template
 //!   frameling templates                             list templates
@@ -160,7 +160,7 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
         Some("script") => {
             let (src, out) = (pos.get(1).ok_or("missing screenplay")?, pos.get(2).ok_or("missing output")?);
             let script = std::fs::read_to_string(src.as_str()).map_err(|e| format!("{src}: {e}"))?;
-            let (p, log) = screenplay::build(&script, &library(&args)?, &tts_engine(&args), &screenplay::Options { bubbles: args.iter().any(|a| a == "--bubbles") })?;
+            let (p, log) = screenplay::build(&script, &library(&args)?, &tts_engine(&args), &screenplay::Options { bubbles: args.iter().any(|a| a == "--bubbles"), shape: flag(&args, "--shape").unwrap_or_else(|| "wide".into()), music: if args.iter().any(|a| a == "--no-music") { String::new() } else { flag(&args, "--music").unwrap_or_else(|| "music-lofi".into()) } })?;
             for l in log {
                 println!("{l}");
             }

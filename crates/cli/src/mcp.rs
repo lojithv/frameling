@@ -367,7 +367,7 @@ Licence terms the user has agreed to (pass them on, and label published audio as
             "script_to_video" => {
                 let script = s("script").ok_or("script is required")?;
                 let bubbles = a.get("bubbles").and_then(Value::as_bool).unwrap_or(false);
-                let (p, log) = crate::screenplay::build(script, &self.lib, &self.tts, &crate::screenplay::Options { bubbles })?;
+                let (p, log) = crate::screenplay::build(script, &self.lib, &self.tts, &crate::screenplay::Options { bubbles, ..Default::default() })?;
                 self.ed.apply(&Command::Batch { commands: vec![] }, None)?; // undo point
                 self.ed.project = p;
                 self.save()?;

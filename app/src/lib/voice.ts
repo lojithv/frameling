@@ -64,7 +64,7 @@ export function splitVoiceId(id: string): { base: string; lang: string | null } 
   return at < 0 ? { base: id, lang: null } : { base: id.slice(0, at), lang: id.slice(at + 1) };
 }
 
-async function synthBytes(text: string, voice: string, speed: number): Promise<ArrayBuffer> {
+export async function synthBytes(text: string, voice: string, speed: number): Promise<ArrayBuffer> {
   if (/^(supertonic|piper):/.test(voice) && !termsAccepted()) throw new Error("Accept the built-in voice terms first (Voice panel).");
   const { invoke } = await import("@tauri-apps/api/core");
   const b64 = await invoke<string>("tts_synthesize", { text, voice, speed });
