@@ -8,11 +8,13 @@ import {
   Mp4OutputFormat,
   Output,
   QUALITY_HIGH,
+  QUALITY_MEDIUM,
   WebMOutputFormat,
   canEncodeAudio,
   canEncodeVideo,
 } from "mediabunny";
 import { eng } from "./store.svelte";
+import type { Engine } from "../engine/frameling.js";
 import { mixdown } from "./audio";
 import type { AudioEvent } from "./types";
 import { toImageData } from "./thumbs";
@@ -22,11 +24,11 @@ import type { ExportSettings } from "./platform";
 export async function exportInBrowser(
   s: ExportSettings,
   progress: (done: number, label: string) => boolean,
+  e: Engine = eng(),
 ): Promise<Blob | null> {
   if (typeof VideoEncoder === "undefined") {
     throw new Error("this browser can't encode video (WebCodecs missing). Try Chrome, Edge or the desktop app.");
   }
-  const e = eng();
   const project = JSON.parse(e.project_view_json());
   const fps: number = project.fps;
   const total = e.total_frames();
@@ -51,13 +53,13 @@ export async function exportInBrowser(
     format: mp4 ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat(),
     target: new BufferTarget(),
   });
-  const video = new CanvasSource(canvas, { codec: vcodec, bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
+  const video = new CanvasSource(canvas, { codec: vcodec, bitrate: s.quality === "draft" ? QUALITY_MEDIUM : QUALITY_HIGH, keyFrameInterval: 2 });
   output.addVideoTrack(video, { frameRate: fps });
 
   const events: AudioEvent[] = JSON.parse(e.audio_events());
   let audio: AudioBufferSource | null = null;
   if (events.length) {
-    audio = new AudioBufferSource({ codec: acodec, bitrate: QUALITY_HIGH });
+    audio = new AudioBufferSource({ codec: acodec, bitrate: s.quality === "draft" ? QUALITY_MEDIUM : QUALITY_HIGH });
     output.addAudioTrack(audio);
   }
   await output.start();

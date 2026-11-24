@@ -4,7 +4,7 @@ What's planned for Frameling, in order. Each item lands as its own commit and
 works in the editor, in the web export and in the desktop MP4 export, for every
 frame shape (16:9, 9:16 and square).
 
-## Creator essentials (in progress)
+## Creator essentials (done)
 
 Ranked by how much they help someone make a finished short video quickly.
 
@@ -27,7 +27,7 @@ Ranked by how much they help someone make a finished short video quickly.
       backgrounds or items on stage.
 - [x] **Script to video.** Paste a dialogue script in the editor and get the
       cast, voices, lip sync, subtitles and a rough animation generated.
-- [ ] **Export presets.** One-click exports for vertical shorts, YouTube and
+- [x] **Export presets.** One-click exports for vertical shorts, YouTube and
       square posts, with subtitles burned in, plus a thumbnail image.
 
 ## Later

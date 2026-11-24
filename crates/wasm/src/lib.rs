@@ -199,6 +199,11 @@ impl Engine {
         frameling_core::captions::srt(&self.editor.project)
     }
 
+    /// Caption settings suited to a frame size, as JSON (export presets).
+    pub fn caption_defaults_for(&self, width: u32, height: u32) -> String {
+        serde_json::to_string(&frameling_core::captions::defaults_for(width, height)).unwrap_or_default()
+    }
+
     /// Caption settings suited to the project's frame shape, as JSON.
     pub fn caption_defaults(&self) -> String {
         let p = &self.editor.project;
