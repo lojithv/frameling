@@ -103,6 +103,7 @@ pub fn media(sound: &str, fps: u32) -> Option<crate::model::Media> {
         duration_frames,
         envelope,
         source: Some(crate::model::MediaSource::File),
+        size: None,
     })
 }
 

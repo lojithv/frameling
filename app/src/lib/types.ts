@@ -79,7 +79,7 @@ export interface Scene {
   id: Id;
   name: string;
   duration: number;
-  background: { preset: string; colors: string[] };
+  background: { preset: string; colors: string[]; image?: Id | null };
   camera: Camera;
   transition: { kind: TransitionKind; duration: number };
   items: Item[];
@@ -210,7 +210,15 @@ export interface TextKind {
   /** Ignores the camera and draws on top. */
   pinned?: boolean;
 }
-export type ItemKind = CharacterKind | PropKind | TextKind;
+/** An imported picture on stage, anchored at its centre. */
+export interface ImageKind {
+  type: "image";
+  media: Id;
+  /** Width in scene px at scale 1. */
+  width: number;
+  radius?: number;
+}
+export type ItemKind = CharacterKind | PropKind | TextKind | ImageKind;
 
 export interface Item {
   id: Id;
@@ -252,6 +260,8 @@ export interface Media {
   durationFrames: number;
   envelope: number[];
   source: MediaSource | null;
+  /** Pixel size of a picture. */
+  size?: [number, number] | null;
 }
 
 export type MediaSource =

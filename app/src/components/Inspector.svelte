@@ -483,6 +483,15 @@
         {/each}
         {#if pk.colors.length}<button class="link" onclick={() => editKind<PropKind>((k) => (k.colors = []))}>Reset colours</button>{/if}
       </section>
+    {:else if kind.type === "image"}
+      {@const ik = kind as import("../lib/types").ImageKind}
+      <section>
+        <h3>Picture</h3>
+        {@render slider("Width", ik.width, 40, 1600, 1, "imw", (v) => editKind<import("../lib/types").ImageKind>((k) => (k.width = v), "imw"), (v) => `${Math.round(v)}px`)}
+        {@render slider("Rounded corners", ik.radius ?? 0, 0, 120, 1, "imr", (v) => editKind<import("../lib/types").ImageKind>((k) => (k.radius = v), "imr"), (v) => (v ? `${v}px` : "none"))}
+        <button class="ghost wide" onclick={() => scene && run({ op: "updateScene", scene: { ...snap(scene), background: { ...snap(scene.background), image: ik.media } } })}>Use as the scene background</button>
+        <p class="hint small">Size, position, rotation and opacity animate with Auto-key like any item.</p>
+      </section>
     {:else if kind.type === "text"}
       {@const tk = kind as TextKind}
         {@const legacyTw = (tk.reveal ?? "none") === "none" && tk.typewriter > 0}
@@ -626,7 +635,10 @@
     <section>
       <h3>Scene</h3>
       {@render slider("Length", scene.duration, frames(1), frames(60), 1, "dur", (v) => editScene((s) => (s.duration = v), "dur"), (v) => `${secs(v).toFixed(1)}s`)}
-      {#if bgEntry?.colors.length}
+      {#if scene.background.image}
+        <div class="clip"><span>🖼️ Background picture: {project.media[scene.background.image]?.name ?? "missing"}</span>
+          <button class="x" title="Back to the drawn background" onclick={() => editScene((s) => (s.background.image = null))}>✕</button></div>
+      {:else if bgEntry?.colors.length}
         {#each bgEntry.colors as def, i}
           <div class="field"><span>Background colour {i + 1}</span>
             {@render swatches(scene.background.colors[i] ?? def, [def, ...PALETTE.slice(0, 9)], (c) => editScene((s) => {

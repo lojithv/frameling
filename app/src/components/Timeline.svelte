@@ -327,7 +327,7 @@
     return out;
   });
   const tickLabel = (t: number) => (t >= 60 ? `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, "0")}` : `${t}s`);
-  const icon = (it: Item) => (it.kind.type === "character" ? "🧑" : it.kind.type === "prop" ? "🪴" : "💬");
+  const icon = (it: Item) => ({ character: "🧑", prop: "🪴", text: "💬", image: "🖼️" })[it.kind.type] ?? "•";
   const clipLen = (c: AudioClip) => {
     const m = project?.media[c.media];
     if (!m) return 1;

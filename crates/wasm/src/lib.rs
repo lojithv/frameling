@@ -292,6 +292,7 @@ impl Engine {
             ItemKind::Character(_) => "character".into(),
             ItemKind::Prop(_) => "prop".into(),
             ItemKind::Text(_) => "text".into(),
+            ItemKind::Image(_) => "image".into(),
         })
     }
 }

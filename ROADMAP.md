@@ -22,7 +22,7 @@ Ranked by how much they help someone make a finished short video quickly.
       takes minutes.
 - [x] **Camera moves.** One-click zoom punches, shakes, push-ins, pans and quick
       cuts at the playhead, and an auto camera that cuts to whoever is talking.
-- [ ] **Backgrounds and props packs, and image import.** More original rooms,
+- [x] **Backgrounds and props packs, and image import.** More original rooms,
       streets, a classroom and outdoor scenes and props, plus your own images as
       backgrounds or items on stage.
 - [ ] **Script to video.** Paste a dialogue script in the editor and get the

@@ -209,11 +209,14 @@ pub struct Background {
     pub preset: String,
     /// Overrides for the preset's colour slots (`$0`, `$1`, ...).
     pub colors: Vec<Color>,
+    /// An imported picture (media id) that fills the world instead of the preset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<Id>,
 }
 
 impl Default for Background {
     fn default() -> Self {
-        Background { preset: "office".into(), colors: vec![] }
+        Background { preset: "office".into(), colors: vec![], image: None }
     }
 }
 
@@ -360,6 +363,26 @@ pub enum ItemKind {
     Character(CharacterItem),
     Prop(PropItem),
     Text(TextItem),
+    Image(ImageItem),
+}
+
+/// An imported picture on stage, anchored at its centre.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ImageItem {
+    /// Media id of the picture (PNG).
+    pub media: Id,
+    /// Width in scene px at scale 1 (the height follows the picture).
+    pub width: f32,
+    /// Rounded corners, scene px.
+    #[serde(skip_serializing_if = "is_default")]
+    pub radius: f32,
+}
+
+impl Default for ImageItem {
+    fn default() -> Self {
+        ImageItem { media: String::new(), width: 400.0, radius: 0.0 }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -992,6 +1015,22 @@ pub struct Media {
     pub envelope: Vec<f32>,
     /// Where the sound came from (lets the editor re-generate a typed line).
     pub source: Option<MediaSource>,
+    /// Pixel size of a picture (`[width, height]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<[u32; 2]>,
+}
+
+impl Media {
+    pub fn is_image(&self) -> bool {
+        self.mime.starts_with("image/")
+    }
+    /// Height over width of a picture (1 when unknown).
+    pub fn aspect(&self) -> f32 {
+        match self.size {
+            Some([w, h]) if w > 0 && h > 0 => h as f32 / w as f32,
+            _ => 1.0,
+        }
+    }
 }
 
 /// Origin of a sound.
@@ -1008,6 +1047,6 @@ pub enum MediaSource {
 
 impl Default for Media {
     fn default() -> Self {
-        Media { id: String::new(), name: String::new(), mime: String::new(), data: String::new(), duration_frames: 0, envelope: vec![], source: None }
+        Media { id: String::new(), name: String::new(), mime: String::new(), data: String::new(), duration_frames: 0, envelope: vec![], source: None, size: None }
     }
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app, currentScene, run, toast } from "../lib/store.svelte";
-  import { CHARACTER_PRESETS, TEXT_PRESETS, newCharacter, newProp, newTextPreset, uid } from "../lib/defaults";
+  import { CHARACTER_PRESETS, TEXT_PRESETS, newCharacter, newImage, newProp, newTextPreset, uid } from "../lib/defaults";
+  import { importImage, imageUrl } from "../lib/images";
   import { itemThumb, backgroundThumb } from "../lib/thumbs";
   import { importAudio, previewSound, stopAudio } from "../lib/audio";
   import { eng } from "../lib/store.svelte";
@@ -14,6 +15,7 @@
     { id: "props", label: "Props", icon: "🪴" },
     { id: "backgrounds", label: "Scenes", icon: "🏞️" },
     { id: "text", label: "Text", icon: "💬" },
+    { id: "images", label: "Images", icon: "🖼️" },
     { id: "sound", label: "Sound", icon: "🎵" },
   ] as const;
   let tab = $state<(typeof tabs)[number]["id"]>("characters");
@@ -44,7 +46,7 @@
 
   function setBackground(id: string) {
     if (!scene) return;
-    run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: id, colors: [] } } as Scene });
+    run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: id, colors: [], image: null } } as Scene });
   }
 
   let importing = $state(false);
@@ -73,7 +75,43 @@
     run({ op: "addAudio", scene: scene.id, clip: { id: uid("clip"), media: mediaId, start: app.frame, volume: 1, speaker, trimStart: 0, length: null } });
   }
 
-  const media = $derived(Object.values(app.project?.media ?? {}));
+  const media = $derived(Object.values(app.project?.media ?? {}).filter((m) => !m.mime.startsWith("image/")));
+  const pictures = $derived(Object.values(app.project?.media ?? {}).filter((m) => m.mime.startsWith("image/")));
+
+  // ---------------------------------------------------- pictures
+  let readingImage = $state(false);
+  async function onImageFile(e: Event, asBackground: boolean) {
+    const input = e.target as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (!files.length || !scene) return;
+    readingImage = true;
+    try {
+      for (const f of files) {
+        const m = await importImage(f, f.name);
+        if (!run({ op: "addMedia", media: m })) continue;
+        if (asBackground) setPictureBackground(m.id);
+        else addPicture(m.id, m.name, m.size);
+      }
+    } catch (err) {
+      toast(`Could not read that image (${(err as Error).message})`, "error");
+    } finally {
+      readingImage = false;
+    }
+  }
+  function addPicture(id: string, name: string, size?: [number, number] | null) {
+    // Fit inside most of the visible frame.
+    const p = app.project!;
+    const k = Math.max(p.width / 1280, p.height / 720);
+    const vw = p.width / k;
+    const aspect = size ? size[1] / size[0] : 1;
+    const width = Math.round(Math.min(vw * 0.7, (720 * 0.55) / aspect));
+    add(newImage(id, name, width));
+  }
+  function setPictureBackground(id: string) {
+    if (!scene) return;
+    run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { ...$state.snapshot(scene.background), image: id } } as Scene });
+  }
 
   // ---------------------------------------------------- built-in sounds
   const sounds: SoundInfo[] = $derived(app.ready ? JSON.parse(eng().sound_catalog()) : []);
@@ -210,6 +248,30 @@
           </button>
         {/each}
       </div>
+    {:else if tab === "images"}
+      <p class="hint">Import your own pictures (PNG, JPG, WebP, GIF…): put them on stage, or use one as the scene background.</p>
+      <label class="primary wide file">
+        {readingImage ? "Reading image…" : "＋ Add image to the stage"}
+        <input type="file" accept="image/*" multiple onchange={(e) => onImageFile(e, false)} disabled={readingImage} />
+      </label>
+      <label class="ghost wide file">
+        Use an image as the background
+        <input type="file" accept="image/*" onchange={(e) => onImageFile(e, true)} disabled={readingImage} />
+      </label>
+      {#if pictures.length}
+        <h4>In this project</h4>
+        <div class="grid">
+          {#each pictures as m (m.id)}
+            <div class="card pic">
+              <button class="plain" onclick={() => addPicture(m.id, m.name, m.size)} title="Add {m.name} to the stage">
+                <img alt="" src={imageUrl(m)} />
+              </button>
+              <span>{m.name}</span>
+              <button class="mini" class:on={scene?.background.image === m.id} onclick={() => setPictureBackground(m.id)} title="Use as this scene's background">Background</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
     {:else if tab === "sound"}
       <p class="hint">
         Import a voice line or music. If a character is selected, it lip-syncs to the sound automatically.
@@ -273,7 +335,7 @@
   }
   .tabs {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     border-bottom: 1px solid var(--line);
   }
   .tabs button {
@@ -433,6 +495,14 @@
     background: var(--accent);
     border-color: var(--accent);
     color: white;
+  }
+  .card.pic img {
+    height: 70px;
+    object-fit: contain;
+  }
+  .card.pic .plain {
+    width: 100%;
+    justify-content: center;
   }
   h5 {
     margin: 10px 0 5px;

@@ -30,7 +30,8 @@ pub struct ItemHit {
 
 /// Evaluate the whole project at a global frame, including scene transitions.
 pub fn evaluate(project: &Project, lib: &Library, frame: u32) -> DisplayList {
-    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![] };
+    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![], images: Default::default() };
+    dl.images = image_set(project);
     let Some((i, local)) = project.locate(frame) else {
         return dl;
     };
@@ -79,13 +80,19 @@ pub fn evaluate(project: &Project, lib: &Library, frame: u32) -> DisplayList {
 
 /// Evaluate one scene on its own (what the editor shows while editing a scene).
 pub fn evaluate_scene(project: &Project, lib: &Library, scene: usize, local: u32) -> (DisplayList, Vec<ItemHit>) {
-    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![] };
+    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![], images: Default::default() };
+    dl.images = image_set(project);
     let Some(s) = project.scenes.get(scene) else {
         return (dl, vec![]);
     };
     let (ops, hits) = scene_ops(project, lib, s, local);
     dl.ops = ops;
     (dl, hits)
+}
+
+/// The project's pictures, for the renderer.
+fn image_set(project: &Project) -> std::collections::BTreeMap<String, std::sync::Arc<Media>> {
+    project.media.iter().filter(|(_, m)| m.is_image()).map(|(k, m)| (k.clone(), m.clone())).collect()
 }
 
 /// Camera centre and zoom at a local frame: the scene's from/to move, with
@@ -125,7 +132,14 @@ fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Ve
     let mut world = Vec::new();
 
     // Background, in design units like everything else in the world.
-    if let Some(bg) = lib.backgrounds.get(&scene.background.preset) {
+    let picture = scene.background.image.as_ref().and_then(|id| project.media.get(id)).filter(|m| m.is_image());
+    if let Some(m) = picture {
+        // Cover the whole world (1280x720), centred, like CSS background-size: cover.
+        let a = m.aspect();
+        let (w, h) = if a > DESIGN_H / DESIGN_W { (DESIGN_W, DESIGN_W * a) } else { (DESIGN_H / a, DESIGN_H) };
+        world.push(Op::fill(Path::rect(-DESIGN_W, -DESIGN_H, DESIGN_W * 3.0, DESIGN_H * 3.0), Color::BLACK));
+        world.push(Op::Image { media: m.id.clone(), x: (DESIGN_W - w) / 2.0, y: (DESIGN_H - h) / 2.0, w, h, r: 0.0 });
+    } else if let Some(bg) = lib.backgrounds.get(&scene.background.preset) {
         world.push(Op::group(Affine::IDENTITY, 1.0, bg.ops(&scene.background.colors)));
     } else {
         let c = scene.background.colors.first().copied().unwrap_or(Color::rgb(0xee, 0xef, 0xf4));
@@ -279,6 +293,13 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
         ItemKind::Prop(p) => match lib.props.get(&p.prop) {
             Some(d) => d.ops(&p.colors),
             None => vec![Op::fill(Path::round_rect(-40.0, -80.0, 80.0, 80.0, 8.0), Color::rgb(0xff, 0x00, 0xff))],
+        },
+        ItemKind::Image(im) => match project.media.get(&im.media) {
+            Some(m) if m.is_image() => {
+                let (w, h) = (im.width.max(1.0), im.width.max(1.0) * m.aspect());
+                vec![Op::Image { media: m.id.clone(), x: -w / 2.0, y: -h / 2.0, w, h, r: im.radius.max(0.0) }]
+            }
+            _ => vec![Op::fill(Path::round_rect(-60.0, -40.0, 120.0, 80.0, 8.0), Color::rgb(0xff, 0x00, 0xff))],
         },
         ItemKind::Text(t) => {
             let t = anim::resolve_text(t, &item.tracks, local);
@@ -748,7 +769,7 @@ pub fn item_preview(lib: &Library, parts: &std::collections::BTreeMap<String, cr
             children.remove(0);
         }
     }
-    DisplayList { width, height, background: None, ops: vec![Op::group(fit, 1.0, ops)] }
+    DisplayList { width, height, background: None, ops: vec![Op::group(fit, 1.0, ops)], images: dl.images }
 }
 
 /// Running starts above this speed (stage px per frame at scale 1).

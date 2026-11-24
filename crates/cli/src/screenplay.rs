@@ -232,6 +232,7 @@ pub fn build(src: &str, lib: &Library, tts: &Tts, opts: &Options) -> Result<(Pro
                         duration_frames: frames,
                         envelope,
                         source: Some(MediaSource::Tts { text: l.text.clone(), voice: voice.clone().unwrap(), speed: 1.0 }),
+                        size: None,
                     };
                     (Some(m), frames)
                 }

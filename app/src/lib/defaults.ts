@@ -67,6 +67,10 @@ export function newProp(prop: string, name: string, x = 640, y = 640): Item {
   return { ...baseItem(uid("prop"), name, x, y), kind: { type: "prop", prop, colors: [] } };
 }
 
+export function newImage(media: string, name: string, width = 420, x = 640, y = 330): Item {
+  return { ...baseItem(uid("image"), name, x, y), kind: { type: "image", media, width } };
+}
+
 export interface TextPreset {
   id: string;
   style: TextStyle;

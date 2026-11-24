@@ -149,6 +149,7 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
                 duration_frames: frames,
                 envelope,
                 source: Some(frameling_core::MediaSource::Tts { text: text.to_string(), voice: voice.clone(), speed }),
+                size: None,
             };
             let clip_id = format!("line-{n}-{}", std::process::id());
             ed.apply(&Command::AddLine { scene: scene.to_string(), clip_id, media, speaker: Some(who.to_string()), start: None }, None)?;

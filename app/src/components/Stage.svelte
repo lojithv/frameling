@@ -221,7 +221,7 @@
       }
     }
     if (d.kind === "background") {
-      run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: d.id, colors: [] } } as Scene });
+      run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: d.id, colors: [], image: null } } as Scene });
       return;
     }
     if (item) {
