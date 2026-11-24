@@ -26,6 +26,11 @@ the browser.
 - **Files**: one portable `.frameling` file (JSON with embedded audio), autosave, unlimited-ish undo (200 steps).
 - **Asset packs**: add props, backgrounds and new character actions with a JSON file. No code needed.
 
+## Roadmap
+
+What's being built next (lip sync shapes, music and sound effects, templates, camera moves,
+more packs and image import, script to video, export presets) is tracked in [ROADMAP.md](ROADMAP.md).
+
 ## Quick start
 
 Prerequisites: [Rust](https://rustup.rs) (stable), Node.js 20+, and FFmpeg on your PATH for desktop export.
