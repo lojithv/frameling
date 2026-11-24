@@ -211,7 +211,7 @@ pub fn build(src: &str, lib: &Library, tts: &Tts, opts: &Options) -> Result<(Pro
                 x: 640.0,
                 y: 670.0 - ci as f32 * 56.0,
                 enter: Effect::Fade,
-                kind: ItemKind::Text(TextItem { text: c.clone(), style: TextStyle::Caption, size: 30.0, color: Color::WHITE, fill: Color::rgba(0x14, 0x17, 0x26, 0xcc), tail: Tail::None, width: 900.0, typewriter: 0.0 }),
+                kind: ItemKind::Text(TextItem { text: c.clone(), style: TextStyle::Caption, size: 30.0, color: Color::WHITE, fill: Color::rgba(0x14, 0x17, 0x26, 0xcc), tail: Tail::None, width: 900.0, ..Default::default() }),
                 ..Default::default()
             });
         }

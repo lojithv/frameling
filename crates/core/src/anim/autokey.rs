@@ -45,6 +45,10 @@ pub const AUTO_CHANNELS: &[Channel] = &[
     Channel::Look(LookField::Accessory),
     Channel::Look(LookField::Style),
     Channel::Look(LookField::Dress),
+    Channel::TextColor,
+    Channel::TextFill,
+    Channel::TextStroke,
+    Channel::TextStrokeWidth,
 ];
 
 /// An f32 field as JSON without float noise (0.95, not 0.949999988).
@@ -70,6 +74,15 @@ pub fn field(item: &Item, ch: Channel) -> Option<Value> {
         Channel::Rotation => num(item.rotation),
         Channel::Opacity => num(item.opacity),
         Channel::Flip => Value::from(item.flip),
+        Channel::TextColor | Channel::TextFill | Channel::TextStroke | Channel::TextStrokeWidth => {
+            let ItemKind::Text(t) = &item.kind else { return None };
+            match ch {
+                Channel::TextColor => Value::from(t.color.to_hex()),
+                Channel::TextFill => Value::from(t.fill.to_hex()),
+                Channel::TextStroke => Value::from(t.stroke.to_hex()),
+                _ => num(t.stroke_width),
+            }
+        }
         Channel::Expression => to_value(&c?.expression),
         Channel::View => to_value(&c?.view),
         Channel::Look(f) => {
@@ -103,6 +116,15 @@ pub fn set_field(item: &mut Item, ch: Channel, v: &Value) {
         Channel::Rotation => item.rotation = num.unwrap_or(item.rotation),
         Channel::Opacity => item.opacity = num.unwrap_or(item.opacity),
         Channel::Flip => item.flip = v.as_bool().unwrap_or(item.flip),
+        Channel::TextColor | Channel::TextFill | Channel::TextStroke | Channel::TextStrokeWidth => {
+            let ItemKind::Text(t) = &mut item.kind else { return };
+            match ch {
+                Channel::TextColor => t.color = col().unwrap_or(t.color),
+                Channel::TextFill => t.fill = col().unwrap_or(t.fill),
+                Channel::TextStroke => t.stroke = col().unwrap_or(t.stroke),
+                _ => t.stroke_width = num.unwrap_or(t.stroke_width).max(0.0),
+            }
+        }
         _ => {
             let ItemKind::Character(c) = &mut item.kind else { return };
             let l = &mut c.look;
@@ -143,6 +165,9 @@ pub fn posed_item(item: &Item, frame: u32) -> Item {
     out.rotation = t.rotation;
     out.opacity = t.opacity;
     out.flip = t.flip;
+    if let (ItemKind::Text(src), ItemKind::Text(dst)) = (&item.kind, &mut out.kind) {
+        *dst = super::resolve_text(src, &item.tracks, frame).into_owned();
+    }
     if let (ItemKind::Character(src), ItemKind::Character(dst)) = (&item.kind, &mut out.kind) {
         dst.expression = expression(src, &item.tracks, frame);
         dst.view = super::view(src, &item.tracks, frame);

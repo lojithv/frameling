@@ -2,7 +2,30 @@
 
 export type Id = string;
 export type Ease = "linear" | "inOut" | "in" | "out" | "back";
-export type Effect = "none" | "fade" | "pop" | "slideLeft" | "slideRight" | "slideUp";
+export type Effect = "none" | "fade" | "pop" | "slideLeft" | "slideRight" | "slideUp" | "slideDown" | "bounce" | "zoom" | "spin";
+export type Font = "sans" | "heavy" | "rounded" | "mono" | "serif";
+export type Reveal = "none" | "typewriter" | "popLetters" | "popWords" | "riseWords" | "bounce" | "fade";
+export type Emphasis = "none" | "wave" | "pulse" | "shake";
+export type CaptionStyle = "pop" | "boxed" | "pill" | "karaoke" | "clean";
+
+/** Auto subtitles made from the voice lines (crates/core/src/captions.rs). */
+export interface Captions {
+  enabled: boolean;
+  style: CaptionStyle;
+  font: Font;
+  /** Letter size at a 720 px short side. */
+  size: number;
+  color: string;
+  highlight: string;
+  stroke: string;
+  strokeWidth: number;
+  boxColor: string;
+  /** Caption centre, 0 = top, 1 = bottom. */
+  y: number;
+  words: number;
+  uppercase: boolean;
+  pop: boolean;
+}
 export type TransitionKind = "cut" | "fade" | "fadeBlack" | "slide" | "zoom";
 export type HairStyle = "bald" | "short" | "spiky" | "long" | "bun" | "curly";
 export type Build = "slim" | "regular" | "broad";
@@ -27,6 +50,8 @@ export interface Project {
   poses?: Record<Id, { id: string; name: string; category: string; tags: string[]; pose: Record<string, number> }>;
   /** Animations made in this project (chained from poses). */
   actions?: Record<Id, { id: string; name: string; duration: number; loop: boolean; keys: unknown[] }>;
+  /** Auto subtitles (absent = defaults, off). */
+  captions?: Captions;
 }
 
 export interface Scene {
@@ -142,6 +167,18 @@ export interface TextKind {
   tail: Tail;
   width: number;
   typewriter: number;
+  font?: Font;
+  stroke?: string;
+  /** Outline thickness, stage px (0 = none). */
+  strokeWidth?: number;
+  uppercase?: boolean;
+  reveal?: Reveal;
+  revealOut?: Reveal;
+  /** Letters (or words) per second. */
+  revealSpeed?: number;
+  emphasis?: Emphasis;
+  /** Ignores the camera and draws on top. */
+  pinned?: boolean;
 }
 export type ItemKind = CharacterKind | PropKind | TextKind;
 
@@ -173,6 +210,8 @@ export interface AudioClip {
   speaker: Id | null;
   trimStart: number;
   length: number | null;
+  /** Subtitle text: absent = the typed line, "" = no subtitle. */
+  caption?: string | null;
 }
 
 export interface Media {
@@ -231,4 +270,5 @@ export type Command =
   | { op: "deleteKeys"; scene: Id; item?: Id | null; path?: string | null; frames?: number[] | null; from?: number | null; to?: number | null }
   | { op: "setInterpolation"; scene: Id; item?: Id | null; path: string; frames?: number[] | null; interp: Interp }
   | { op: "defineOutfit"; scene: Id; item: Id; name: string; outfit: LookPatch | null }
+  | { op: "setCaptions"; captions: Captions }
   | { op: "batch"; commands: Command[] };

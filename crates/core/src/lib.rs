@@ -6,6 +6,7 @@
 
 pub mod anim;
 pub mod audio;
+pub mod captions;
 pub mod command;
 pub mod demo;
 pub mod display;

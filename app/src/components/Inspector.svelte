@@ -3,7 +3,9 @@
   import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
   import PosePanel from "./PosePanel.svelte";
-  import type { AudioClip, CharacterKind, Effect, Item, PropKind, Scene, TextKind, TransitionKind, View } from "../lib/types";
+  import type { AudioClip, CaptionStyle, Captions, CharacterKind, Effect, Emphasis, Font, Item, PropKind, Reveal, Scene, TextKind, TransitionKind, View } from "../lib/types";
+  import { saveSubtitles } from "../lib/platform";
+  import { eng } from "../lib/store.svelte";
 
   const scene = $derived(currentScene());
   const item = $derived(selectedPosed());
@@ -54,7 +56,56 @@
     { id: "slideLeft", label: "Slide from left" },
     { id: "slideRight", label: "Slide from right" },
     { id: "slideUp", label: "Slide up" },
+    { id: "slideDown", label: "Slide down" },
+    { id: "bounce", label: "Bounce" },
+    { id: "zoom", label: "Zoom" },
+    { id: "spin", label: "Spin" },
   ];
+  const FONTS: { id: Font; label: string }[] = [
+    { id: "sans", label: "Sans" }, { id: "heavy", label: "Heavy" }, { id: "rounded", label: "Rounded" },
+    { id: "mono", label: "Mono" }, { id: "serif", label: "Serif" },
+  ];
+  const REVEALS: { id: Reveal; label: string }[] = [
+    { id: "none", label: "All at once" },
+    { id: "typewriter", label: "Typewriter" },
+    { id: "popLetters", label: "Pop letters" },
+    { id: "popWords", label: "Pop words" },
+    { id: "riseWords", label: "Rise words" },
+    { id: "bounce", label: "Bounce letters" },
+    { id: "fade", label: "Fade letters" },
+  ];
+  const EMPHASES: { id: Emphasis; label: string }[] = [
+    { id: "none", label: "None" }, { id: "wave", label: "Wave" }, { id: "pulse", label: "Pulse" }, { id: "shake", label: "Shake" },
+  ];
+  const CAPTION_STYLES: { id: CaptionStyle; label: string; hint: string }[] = [
+    { id: "pop", label: "Pop", hint: "Outlined; the spoken word changes colour and pops" },
+    { id: "boxed", label: "Boxed", hint: "On a dark panel; the spoken word changes colour" },
+    { id: "pill", label: "Pill", hint: "The spoken word sits on a coloured pill" },
+    { id: "karaoke", label: "Karaoke", hint: "Words fill with colour as they are spoken" },
+    { id: "clean", label: "Clean", hint: "Plain outlined text, no highlight" },
+  ];
+  /** Frame positions for pinned text: stage y as seen with the camera at home. */
+  const PIN_SPOTS = [{ y: 110, label: "Top" }, { y: 360, label: "Middle" }, { y: 560, label: "Lower" }, { y: 650, label: "Bottom" }];
+
+  // ------------------------------------------------------------ captions
+  const captions = $derived<Captions | null>(project?.captions ?? (app.ready ? JSON.parse(eng().caption_defaults()) : null));
+  function editCaptions(fn: (c: Captions) => void, key?: string) {
+    if (!captions) return;
+    const c = structuredClone($state.snapshot(captions)) as Captions;
+    fn(c);
+    run({ op: "setCaptions", captions: c }, key);
+  }
+  function toggleCaptions() {
+    // First time on: start from the defaults for this frame shape.
+    const base = project?.captions ? (structuredClone($state.snapshot(project.captions)) as Captions) : (JSON.parse(eng().caption_defaults()) as Captions);
+    base.enabled = !base.enabled;
+    run({ op: "setCaptions", captions: base });
+  }
+  const isVoiceLine = (c: AudioClip) => project?.media[c.media]?.source?.kind === "tts";
+  const lineText = (c: AudioClip) => {
+    const s = project?.media[c.media]?.source;
+    return s?.kind === "tts" ? s.text : "";
+  };
   const transitions: { id: TransitionKind; label: string }[] = [
     { id: "cut", label: "Cut" },
     { id: "fade", label: "Crossfade" },
@@ -345,6 +396,8 @@
       </section>
     {:else if kind.type === "text"}
       {@const tk = kind as TextKind}
+        {@const legacyTw = (tk.reveal ?? "none") === "none" && tk.typewriter > 0}
+        {@const byWord = tk.reveal === "popWords" || tk.reveal === "riseWords"}
       <section>
         <h3>Text</h3>
         <textarea id="text-input" rows="3" value={tk.text} oninput={(e) => editKind<TextKind>((k) => (k.text = (e.target as HTMLTextAreaElement).value), "text")} onchange={endGesture}></textarea>
@@ -358,11 +411,67 @@
         {/if}
         {@render slider("Size", tk.size, 10, 140, 1, "size", (v) => editKind<TextKind>((k) => (k.size = v), "size"))}
         {@render slider("Wrap width", tk.width, 80, 1200, 10, "width", (v) => editKind<TextKind>((k) => (k.width = v), "width"))}
-        {@render slider("Typewriter", tk.typewriter, 0, 60, 1, "tw", (v) => editKind<TextKind>((k) => (k.typewriter = v), "tw"), (v) => (v ? `${v} chars/s` : "off"))}
+        <div class="field"><span>Font</span>
+          {@render seg(tk.font ?? "sans", FONTS, (v) => editKind<TextKind>((k) => (k.font = v)))}
+        </div>
+        <label class="check"><input type="checkbox" checked={!!tk.uppercase} onchange={() => editKind<TextKind>((k) => (k.uppercase = !k.uppercase))} /> ALL CAPS</label>
         <div class="field"><span>Text colour</span>{@render swatches(tk.color, PALETTE, (c) => editKind<TextKind>((k) => (k.color = c)))}</div>
+        {@render slider("Outline", tk.strokeWidth ?? 0, 0, 16, 0.5, "sw", (v) => editKind<TextKind>((k) => { k.strokeWidth = v; if (!k.stroke) k.stroke = "#14161f"; }, "sw"), (v) => (v ? `${v}px` : "none"))}
+        {#if (tk.strokeWidth ?? 0) > 0}
+          <div class="field"><span>Outline colour</span>{@render swatches(tk.stroke ?? "#000000", ["#14161f", "#ffffff", ...PALETTE.slice(2, 10)], (c) => editKind<TextKind>((k) => (k.stroke = c)))}</div>
+        {/if}
         {#if tk.style !== "title" && tk.style !== "plain"}
           <div class="field"><span>Fill</span>{@render swatches(tk.fill, ["#ffffff", "#141726cc", "#fff4c2", "#e8f1ff", ...PALETTE.slice(2, 8)], (c) => editKind<TextKind>((k) => (k.fill = c)))}</div>
         {/if}
+      </section>
+      <section>
+        <h3>Text animation</h3>
+        <div class="row2">
+          <label class="field"><span>Letters come in</span>
+            <select value={legacyTw ? "typewriter" : (tk.reveal ?? "none")} onchange={(e) => editKind<TextKind>((k) => {
+              k.reveal = (e.target as HTMLSelectElement).value as Reveal;
+              if (k.typewriter > 0) { k.revealSpeed = k.typewriter; k.typewriter = 0; }
+              if (k.reveal === "popWords" || k.reveal === "riseWords") k.revealSpeed = Math.min(k.revealSpeed ?? 4, 8);
+              else if ((k.revealSpeed ?? 20) < 8) k.revealSpeed = 18;
+            })}>
+              {#each REVEALS as r}<option value={r.id}>{r.label}</option>{/each}
+            </select>
+          </label>
+          <label class="field"><span>Letters leave</span>
+            <select value={tk.revealOut ?? "none"} onchange={(e) => editKind<TextKind>((k) => (k.revealOut = (e.target as HTMLSelectElement).value as Reveal))}>
+              {#each REVEALS as r}<option value={r.id}>{r.label}</option>{/each}
+            </select>
+          </label>
+        </div>
+        {#if (tk.reveal ?? "none") !== "none" || (tk.revealOut ?? "none") !== "none" || legacyTw}
+          {@render slider("Speed", legacyTw ? tk.typewriter : (tk.revealSpeed ?? 20), 1, byWord ? 12 : 60, 1, "rs", (v) => editKind<TextKind>((k) => { if (k.typewriter > 0) { k.reveal = "typewriter"; k.typewriter = 0; } k.revealSpeed = v; }, "rs"), (v) => `${v} ${byWord ? "words" : "letters"}/s`)}
+        {/if}
+        {#if (tk.revealOut ?? "none") !== "none" && item.end === null}
+          <p class="hint small">Letters leave before the text's end time: turn off "Stay until the scene ends" under Timing.</p>
+        {/if}
+        <div class="field"><span>Loop</span>
+          {@render seg(tk.emphasis ?? "none", EMPHASES, (v) => editKind<TextKind>((k) => (k.emphasis = v)))}
+        </div>
+        <label class="check" title="Stays in the same place in the frame while the camera pans or zooms, and draws on top of everything">
+          <input type="checkbox" checked={!!tk.pinned} onchange={() => edit((it) => {
+            const k = it.kind as TextKind;
+            k.pinned = !k.pinned;
+            // Keep it where it is on screen (for a still camera).
+            const c = scene!.camera.from;
+            if (k.pinned) { it.x = Math.round((it.x - c.x) * c.zoom + 640); it.y = Math.round((it.y - c.y) * c.zoom + 360); }
+            else { it.x = Math.round((it.x - 640) / c.zoom + c.x); it.y = Math.round((it.y - 360) / c.zoom + c.y); }
+          })} /> Pin to screen (ignore camera)
+        </label>
+        {#if tk.pinned}
+          <div class="field"><span>Place in frame</span>
+            <div class="seg">
+              {#each PIN_SPOTS as s}
+                <button onclick={() => edit((it) => { it.x = 640; it.y = s.y; })}>{s.label}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+        <p class="hint small">Position, size, rotation, opacity and colours can be keyframed: turn on Auto-key, move the playhead and change them.</p>
       </section>
     {/if}
 
@@ -464,6 +573,44 @@
         {@render slider("Pan Y", scene.camera.to.y, 0, 720, 1, "cy1", (v) => editScene((s) => (s.camera.to.y = v), "cy1"))}
       {/if}
     </section>
+    {#if captions}
+      <section class="captions">
+        <h3>Auto subtitles</h3>
+        <label class="check"><input type="checkbox" checked={captions.enabled} onchange={toggleCaptions} /> Show subtitles from the voice lines</label>
+        {#if captions.enabled}
+          <div class="field"><span>Look</span>
+            <div class="seg">
+              {#each CAPTION_STYLES as s}
+                <button class:on={captions.style === s.id} title={s.hint} onclick={() => editCaptions((c) => (c.style = s.id))}>{s.label}</button>
+              {/each}
+            </div>
+          </div>
+          <div class="field"><span>Font</span>{@render seg(captions.font, FONTS, (v) => editCaptions((c) => (c.font = v)))}</div>
+          {@render slider("Size", captions.size, 16, 110, 1, "csz", (v) => editCaptions((c) => (c.size = v), "csz"))}
+          {@render slider("Words at once", captions.words, 1, 8, 1, "cw", (v) => editCaptions((c) => (c.words = v), "cw"))}
+          <div class="field"><span>Position</span>
+            {@render seg(captions.y < 0.34 ? "top" : captions.y < 0.62 ? "middle" : "bottom", [{ id: "top", label: "Top" }, { id: "middle", label: "Middle" }, { id: "bottom", label: "Bottom" }], (v) => editCaptions((c) => (c.y = v === "top" ? 0.2 : v === "middle" ? 0.5 : project.height > project.width ? 0.7 : 0.84)))}
+          </div>
+          {@render slider("Height", Math.round(captions.y * 100), 5, 95, 1, "cy", (v) => editCaptions((c) => (c.y = v / 100), "cy"), (v) => `${v}%`)}
+          <div class="field"><span>Text</span>{@render swatches(captions.color, ["#ffffff", "#14161f", "#ffd23f", ...PALETTE.slice(2, 8)], (v) => editCaptions((c) => (c.color = v)))}</div>
+          {#if captions.style !== "clean"}
+            <div class="field"><span>Highlight</span>{@render swatches(captions.highlight, ["#ffd23f", "#3ddc84", "#ff4d6d", "#4f7cff", "#7c5cff", "#ff9f1c", "#22d3ee", "#ffffff"], (v) => editCaptions((c) => (c.highlight = v)))}</div>
+          {/if}
+          {#if captions.style === "boxed"}
+            <div class="field"><span>Panel</span>{@render swatches(captions.boxColor, ["#10121cc8", "#000000", "#ffffffe6", "#4f7cffd9", "#e84a5fd9"], (v) => editCaptions((c) => (c.boxColor = v)))}</div>
+          {:else}
+            {@render slider("Outline", captions.strokeWidth, 0, 12, 0.5, "csw", (v) => editCaptions((c) => (c.strokeWidth = v), "csw"), (v) => (v ? `${v}px` : "none"))}
+            {#if captions.strokeWidth > 0}
+              <div class="field"><span>Outline colour</span>{@render swatches(captions.stroke, ["#101014", "#ffffff", "#4f7cff", "#e84a5f"], (v) => editCaptions((c) => (c.stroke = v)))}</div>
+            {/if}
+          {/if}
+          <label class="check"><input type="checkbox" checked={captions.uppercase} onchange={() => editCaptions((c) => (c.uppercase = !c.uppercase))} /> ALL CAPS</label>
+          <label class="check"><input type="checkbox" checked={captions.pop} onchange={() => editCaptions((c) => (c.pop = !c.pop))} /> Pop each group in</label>
+          <button class="ghost wide" onclick={saveSubtitles} title="A subtitle file to upload next to the video">⬇ Save subtitles (.srt)</button>
+          <p class="hint small">Subtitles cover the whole movie and follow each voice line. Fix a line's words under Sounds below.</p>
+        {/if}
+      </section>
+    {/if}
     <section>
       <h3>Sounds in this scene</h3>
       {#each scene.audio as c (c.id)}
@@ -480,6 +627,15 @@
             </label>
           </div>
           {@render slider("Volume", c.volume, 0, 2, 0.01, "vol", (v) => editClip(c, (n) => (n.volume = v), "vol"), (v) => `${Math.round(v * 100)}%`)}
+          {#if captions?.enabled}
+            <label class="field"><span>Subtitle{isVoiceLine(c) ? "" : " (type the words)"}</span>
+              <textarea rows="2" value={c.caption ?? lineText(c)} placeholder={isVoiceLine(c) ? "" : "No subtitle"}
+                onchange={(e) => editClip(c, (n) => {
+                  const v = (e.target as HTMLTextAreaElement).value;
+                  n.caption = isVoiceLine(c) && v.trim() === lineText(c).trim() ? null : v;
+                })}></textarea>
+            </label>
+          {/if}
         </div>
       {:else}
         <p class="hint">No sounds yet. Use the Sound tab to import voice or music.</p>

@@ -67,13 +67,56 @@ export function newProp(prop: string, name: string, x = 640, y = 640): Item {
   return { ...baseItem(uid("prop"), name, x, y), kind: { type: "prop", prop, colors: [] } };
 }
 
-export const TEXT_PRESETS: { style: TextStyle; label: string; sample: string }[] = [
-  { style: "bubble", label: "Speech bubble", sample: "Hello there!" },
-  { style: "thought", label: "Thought bubble", sample: "Hmm..." },
-  { style: "caption", label: "Caption", sample: "Meanwhile, at the office..." },
-  { style: "title", label: "Title", sample: "Chapter One" },
-  { style: "plain", label: "Plain text", sample: "Text" },
+export interface TextPreset {
+  id: string;
+  style: TextStyle;
+  label: string;
+  sample: string;
+  /** Animated presets: font, outline, reveal... on top of the style's defaults. */
+  extra?: Partial<TextKind>;
+  /** Where it goes when added with a click (pinned presets sit in the frame). */
+  y?: number;
+}
+
+export const TEXT_PRESETS: TextPreset[] = [
+  { id: "bubble", style: "bubble", label: "Speech bubble", sample: "Hello there!" },
+  { id: "thought", style: "thought", label: "Thought bubble", sample: "Hmm..." },
+  { id: "caption", style: "caption", label: "Caption", sample: "Meanwhile, at the office..." },
+  { id: "title", style: "title", label: "Title", sample: "Chapter One" },
+  { id: "plain", style: "plain", label: "Plain text", sample: "Text" },
+  {
+    id: "pop-title", style: "plain", label: "Pop-in title", sample: "Big news!", y: 130,
+    extra: { size: 64, color: "#ffd23f", font: "heavy", stroke: "#14161f", strokeWidth: 6, uppercase: true, reveal: "popLetters", revealSpeed: 18, width: 380, pinned: true },
+  },
+  {
+    id: "callout", style: "plain", label: "Callout", sample: "Wait for it...", y: 250,
+    extra: { size: 40, color: "#ffffff", font: "rounded", stroke: "#e84a5f", strokeWidth: 5, reveal: "popWords", revealSpeed: 5, emphasis: "pulse", width: 380, pinned: true },
+  },
+  {
+    id: "typewriter", style: "caption", label: "Typewriter", sample: "Day 1. The plan begins.", y: 560,
+    extra: { size: 28, color: "#ffffff", fill: "#141726cc", font: "mono", reveal: "typewriter", revealOut: "typewriter", revealSpeed: 14, width: 380, pinned: true },
+  },
+  {
+    id: "bounce", style: "plain", label: "Bouncy words", sample: "Let's go!", y: 200,
+    extra: { size: 60, color: "#ffffff", font: "heavy", stroke: "#4f7cff", strokeWidth: 6, uppercase: true, reveal: "bounce", revealSpeed: 14, emphasis: "wave", width: 380, pinned: true },
+  },
+  {
+    id: "rise", style: "title", label: "Rising subtitle", sample: "One week later", y: 600,
+    extra: { size: 40, color: "#ffffff", font: "serif", reveal: "riseWords", revealOut: "fade", revealSpeed: 4, width: 380, pinned: true },
+  },
 ];
+
+/** A text item from a library preset. */
+export function newTextPreset(p: TextPreset, x?: number, y?: number): Item {
+  const it = newText(p.style, p.sample, x ?? 640, y ?? p.y ?? 200);
+  if (p.extra) {
+    Object.assign(it.kind, p.extra);
+    it.name = p.label;
+    it.enter = "none";
+    it.y = y ?? p.y ?? it.y;
+  }
+  return it;
+}
 
 export function newText(style: TextStyle, text: string, x = 640, y = 200): Item {
   const kind: TextKind = {

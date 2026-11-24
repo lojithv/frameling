@@ -98,6 +98,7 @@ All times are **frames** (project fps, default 30). Positions are stage pixels o
 {"op":"setInterpolation","scene":"s1","item":"maya","path":"transform.x","frames":null,"interp":"bounce"}
 {"op":"moveKeys","scene":"s1","item":"maya","from":0,"to":90,"paths":["transform.x","transform.y"]}   // retime a moment (paths optional = every track)
 {"op":"defineOutfit","scene":"s1","item":"leo","name":"suit","outfit":{"top":"#222222","accessory":"tie"}}   // outfit null removes
+{"op":"setCaptions","captions":{CAPTIONS}}   // auto subtitles from the voice lines
 {"op":"batch","commands":[...]}
 ```
 
@@ -105,7 +106,7 @@ Scene fields: `id, name, duration, background {preset, colors[]}, camera {from {
 
 ITEM fields (all optional except `id` and `kind`):
 `id, name, start, end (null = until scene end), x, y, scale, rotation, flip, opacity,
-enter/exit (none|fade|pop|slideLeft|slideRight|slideUp), motion {x, y, start, end, ease}, locked, kind`.
+enter/exit (none|fade|pop|slideLeft|slideRight|slideUp|slideDown|bounce|zoom|spin), motion {x, y, start, end, ease}, locked, kind`.
 
 `kind` is one of:
 
@@ -118,8 +119,33 @@ enter/exit (none|fade|pop|slideLeft|slideRight|slideUp), motion {x, y, start, en
          "style":"cartoon|stick","dress":false}}
 {"type":"prop","prop":"desk","colors":["#b9875a"]}
 {"type":"text","text":"Hello!","style":"bubble|thought|caption|title|plain","size":28,
- "color":"#1f2233","fill":"#ffffff","tail":"bottomLeft|bottomRight|none","width":320,"typewriter":0}
+ "color":"#1f2233","fill":"#ffffff","tail":"bottomLeft|bottomRight|none","width":320,
+ "font":"sans|heavy|rounded|mono|serif","stroke":"#000000","strokeWidth":0,"uppercase":false,
+ "reveal":"none|typewriter|popLetters|popWords|riseWords|bounce|fade","revealOut":"none|...","revealSpeed":20,
+ "emphasis":"none|wave|pulse|shake","pinned":false}
 ```
+
+Animated text: `reveal` brings letters (or words) in one by one after the item appears, at
+`revealSpeed` letters (words) per second; `revealOut` takes them away before the item's `end`
+(typewriter deletes from the end). `emphasis` loops while the text is on screen. `strokeWidth`
+is the outline thickness in stage px. `pinned` text ignores the scene camera and draws on top,
+so titles stay put while the camera moves; its x/y are stage px as seen with the camera at home
+(640, 360, zoom 1). For a vertical 9:16 project the visible stage is x 437..843 (full height).
+
+## Auto subtitles (`setCaptions`)
+
+Captions are made from the voice lines: a text-to-speech line uses its typed text, any clip can
+set `"caption"` on its audio clip (`updateAudio`) to give or fix the words, and `"caption":""`
+hides one. Words are timed to the audio and the spoken word is highlighted.
+
+```jsonc
+{"enabled":true,"style":"pop|boxed|pill|karaoke|clean","font":"heavy","size":46,"color":"#ffffff",
+ "highlight":"#ffd23f","stroke":"#101014","strokeWidth":4,"boxColor":"#10121cc8","y":0.78,
+ "words":3,"uppercase":true,"pop":true}
+```
+
+`size` and `strokeWidth` are at a 720 px short side and scale with the frame; `y` is the
+caption centre from 0 (top) to 1 (bottom); `words` is the most words shown at once.
 
 Easing: `linear | inOut | in | out | back`. Colours: `#rrggbb` or `#rrggbbaa`.
 Characters with `motion` walk automatically and face where they're going; characters with a
@@ -151,6 +177,8 @@ enums, expressions and outfits switch exactly on their key's frame.
 | `look.hairStyle`, `look.build`, `look.accessory`, `look.style`, `look.dress` | character | enum name / bool |
 | `outfit` | character | an outfit name, `"default"`, or a partial look object |
 | `expression` | character | expression name |
+| `text.color`, `text.fill`, `text.stroke` | text | `#rrggbb` |
+| `text.strokeWidth` | text | outline thickness, stage px |
 | `camera.x`, `camera.y`, `camera.zoom` | scene (omit `item`) | stage px / zoom factor |
 
 Bones: `bone.root.y` (lift, px), `bone.spine.y` (bob, px), `bone.spine.rot` (lean),

@@ -86,6 +86,8 @@ pub enum Command {
     AddPose { pose: crate::pack::PoseDef },
     /// Add or replace an animation in the project (e.g. chained from poses).
     AddAction { action: crate::pack::ActionDef },
+    /// Replace the auto subtitle settings.
+    SetCaptions { captions: Captions },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
 }
@@ -368,6 +370,14 @@ impl Command {
                     crate::pack::Part::compile(d)?;
                     p.parts.insert(d.id.clone(), d.clone());
                 }
+            }
+            Command::SetCaptions { captions } => {
+                let mut c = captions.clone();
+                c.size = c.size.clamp(8.0, 200.0);
+                c.words = c.words.clamp(1, 12);
+                c.y = c.y.clamp(0.0, 1.0);
+                c.stroke_width = c.stroke_width.clamp(0.0, 40.0);
+                p.captions = c;
             }
             Command::AddPose { pose } => {
                 check_id(&pose.id)?;

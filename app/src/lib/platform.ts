@@ -90,6 +90,24 @@ export async function saveProject(saveAs = false) {
   toast("Project saved");
 }
 
+/** Save the auto subtitles as an .srt file (for uploading next to the video). */
+export async function saveSubtitles() {
+  const srt = eng().captions_srt();
+  if (!srt.trim()) {
+    toast("No subtitles yet: add a voice line (or type a caption on a sound) first.", "error");
+    return;
+  }
+  if (isDesktop) {
+    const { invoke, dialog } = await tauri();
+    const path = await dialog.save({ filters: [{ name: "Subtitles", extensions: ["srt"] }], defaultPath: `${safeName()}.srt` });
+    if (!path) return;
+    await invoke("write_text_file", { path, contents: srt });
+  } else {
+    download(new Blob([srt], { type: "text/plain" }), `${safeName()}.srt`);
+  }
+  toast("Subtitles saved");
+}
+
 export interface ExportSettings {
   width: number;
   height: number;

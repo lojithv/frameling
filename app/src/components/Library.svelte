@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app, currentScene, run, toast } from "../lib/store.svelte";
-  import { CHARACTER_PRESETS, TEXT_PRESETS, newCharacter, newProp, newText, uid } from "../lib/defaults";
+  import { CHARACTER_PRESETS, TEXT_PRESETS, newCharacter, newProp, newTextPreset, uid } from "../lib/defaults";
   import { itemThumb, backgroundThumb } from "../lib/thumbs";
   import { importAudio } from "../lib/audio";
   import { loadPackFile } from "../lib/platform";
@@ -165,10 +165,10 @@
           <button
             class="row"
             draggable="true"
-            ondragstart={(e) => dragData(e, { kind: "text", style: t.style, sample: t.sample })}
-            onclick={() => add(newText(t.style, t.sample))}
+            ondragstart={(e) => dragData(e, { kind: "text", preset: t.id })}
+            onclick={() => add(newTextPreset(t))}
           >
-            <img alt="" src={itemThumb(`text-${t.style}`, newText(t.style, t.sample), 120, 56)} />
+            <img alt="" src={itemThumb(`text-${t.id}`, newTextPreset(t), 120, 56, 150)} />
             <span>{t.label}</span>
           </button>
         {/each}

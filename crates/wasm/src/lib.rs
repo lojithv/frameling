@@ -157,6 +157,17 @@ impl Engine {
         frameling_render::render(&evaluate(&self.editor.project, &self.lib, frame), width, height)
     }
 
+    /// The movie's auto subtitles as an SRT file.
+    pub fn captions_srt(&self) -> String {
+        frameling_core::captions::srt(&self.editor.project)
+    }
+
+    /// Caption settings suited to the project's frame shape, as JSON.
+    pub fn caption_defaults(&self) -> String {
+        let p = &self.editor.project;
+        serde_json::to_string(&frameling_core::captions::defaults_for(p.width, p.height)).unwrap_or_default()
+    }
+
     /// Audio placements for playback/export, as JSON.
     pub fn audio_events(&self) -> String {
         serde_json::to_string(&audio_events(&self.editor.project)).unwrap_or_default()

@@ -16,6 +16,8 @@
 //! | `outfit` | character | outfit name, `"default"`, or a partial look object (steps) |
 //! | `expression` | character | expression name (steps) |
 //! | `view` | character | turnaround view: front, frontRight, right, backRight, back, backLeft, left, frontLeft (steps) |
+//! | `text.color`, `text.fill`, `text.stroke` | text | `"#rrggbb"` |
+//! | `text.strokeWidth` | text | number, scene px |
 //! | `camera.x`, `camera.y`, `camera.zoom` | scene | number |
 //!
 //! Aliases (`x`, `bone.le`, `look.hair_style`, ...) are accepted and stored
@@ -118,6 +120,10 @@ pub enum Channel {
     Outfit,
     Expression,
     View,
+    TextColor,
+    TextFill,
+    TextStroke,
+    TextStrokeWidth,
     CameraX,
     CameraY,
     CameraZoom,
@@ -130,6 +136,8 @@ pub enum Scope {
     Item,
     /// Character items only.
     Character,
+    /// Text items only.
+    Text,
     /// The scene itself (camera).
     Scene,
 }
@@ -155,6 +163,10 @@ const SIMPLE: &[(&str, &[&str], Channel)] = &[
     ("outfit", &["costume", "look.outfit"], Channel::Outfit),
     ("expression", &["face", "look.expression"], Channel::Expression),
     ("view", &["facing", "turn"], Channel::View),
+    ("text.color", &["textColor", "text.colour"], Channel::TextColor),
+    ("text.fill", &["textFill"], Channel::TextFill),
+    ("text.stroke", &["textStroke", "text.outline"], Channel::TextStroke),
+    ("text.strokeWidth", &["text.stroke_width", "text.outlineWidth"], Channel::TextStrokeWidth),
     ("camera.x", &[], Channel::CameraX),
     ("camera.y", &[], Channel::CameraY),
     ("camera.zoom", &[], Channel::CameraZoom),
@@ -199,6 +211,7 @@ impl Channel {
         match self {
             Channel::X | Channel::Y | Channel::Scale | Channel::ScaleX | Channel::ScaleY | Channel::Rotation | Channel::Opacity | Channel::Flip => Scope::Item,
             Channel::Bone(_) | Channel::Look(_) | Channel::Outfit | Channel::Expression | Channel::View => Scope::Character,
+            Channel::TextColor | Channel::TextFill | Channel::TextStroke | Channel::TextStrokeWidth => Scope::Text,
             Channel::CameraX | Channel::CameraY | Channel::CameraZoom => Scope::Scene,
         }
     }
@@ -210,6 +223,7 @@ impl Channel {
                 LookField::Skin | LookField::Hair | LookField::Top | LookField::Bottom | LookField::Shoes | LookField::Accent => ValueKind::Color,
                 _ => ValueKind::Step,
             },
+            Channel::TextColor | Channel::TextFill | Channel::TextStroke => ValueKind::Color,
             _ => ValueKind::Number,
         }
     }
@@ -264,7 +278,7 @@ impl Channel {
     pub fn check_target(self, kind: Option<&ItemKind>) -> Result<(), String> {
         let ok = matches!(
             (self.scope(), kind),
-            (Scope::Scene, None) | (Scope::Item, Some(_)) | (Scope::Character, Some(ItemKind::Character(_)))
+            (Scope::Scene, None) | (Scope::Item, Some(_)) | (Scope::Character, Some(ItemKind::Character(_))) | (Scope::Text, Some(ItemKind::Text(_)))
         );
         if ok {
             return Ok(());
@@ -272,6 +286,7 @@ impl Channel {
         Err(match self.scope() {
             Scope::Scene => format!("{} is a scene track: leave out the item", self.path()),
             Scope::Character => format!("{} only applies to characters", self.path()),
+            Scope::Text => format!("{} only applies to text", self.path()),
             Scope::Item => format!("{} needs an item", self.path()),
         })
     }
