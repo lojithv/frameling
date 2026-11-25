@@ -298,6 +298,17 @@ pub enum Op {
     Group { transform: Affine, opacity: f32, children: Vec<Op> },
     Fill { path: Path, paint: Paint },
     Stroke { path: Path, color: Color, width: f32 },
+    /// An imported picture (project media) stretched over the rectangle.
+    Image {
+        media: String,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        /// Corner radius.
+        #[serde(default)]
+        r: f32,
+    },
 }
 
 impl Op {
@@ -323,6 +334,7 @@ impl Op {
                 let h = width / 2.0;
                 Rect { x: b.x - h, y: b.y - h, w: b.w + 2.0 * h, h: b.h + 2.0 * h }
             }
+            Op::Image { x, y, w, h, .. } => Rect { x: *x, y: *y, w: *w, h: *h },
             Op::Group { transform, children, .. } => {
                 let mut r = Rect::empty();
                 for c in children {
@@ -347,4 +359,7 @@ pub struct DisplayList {
     pub height: u32,
     pub background: Option<Color>,
     pub ops: Vec<Op>,
+    /// Pictures the `Image` ops refer to (shared, not copied).
+    #[serde(skip)]
+    pub images: std::collections::BTreeMap<String, std::sync::Arc<crate::model::Media>>,
 }

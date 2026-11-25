@@ -86,6 +86,37 @@ pub enum Command {
     AddPose { pose: crate::pack::PoseDef },
     /// Add or replace an animation in the project (e.g. chained from poses).
     AddAction { action: crate::pack::ActionDef },
+    /// Replace the auto subtitle settings.
+    SetCaptions { captions: Captions },
+    /// Add a built-in sound effect or music loop (`sfx::catalog`) to the
+    /// project's media as `sound-<id>` (kept if already there). Then place it
+    /// with addAudio or setMusic.
+    AddBuiltinMedia { sound: String },
+    /// A camera preset at `frame` (scene-local) lasting `duration` frames:
+    /// punch, shake, pushIn, pullOut, panTo / cutTo / whipTo (a `target` item)
+    /// or reset. Writes keys on the scene's camera tracks.
+    CameraMove {
+        scene: Id,
+        #[serde(rename = "move")]
+        kind: crate::camera::Move,
+        frame: u32,
+        #[serde(default = "default_move_len")]
+        duration: u32,
+        #[serde(default)]
+        target: Option<Id>,
+        #[serde(default = "one")]
+        strength: f32,
+    },
+    /// Replace a scene's camera keys with an automatic edit of its dialogue:
+    /// `cuts` (close-up of each speaker) or `punches` (zoom beats).
+    AutoCamera {
+        scene: Id,
+        style: crate::camera::AutoStyle,
+        #[serde(default = "one")]
+        strength: f32,
+    },
+    /// Set (or with `None`, remove) the background music.
+    SetMusic { music: Option<Music> },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
 }
@@ -108,6 +139,12 @@ fn scene_mut<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Scene, String> 
 
 fn yes() -> bool {
     true
+}
+fn one() -> f32 {
+    1.0
+}
+fn default_move_len() -> u32 {
+    20
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -204,7 +241,7 @@ impl Command {
                 p.media.insert(media.id.clone(), Arc::new(media.clone()));
             }
             Command::RemoveMedia { id } => {
-                let used = p.scenes.iter().any(|s| s.audio.iter().any(|c| &c.media == id));
+                let used = p.scenes.iter().any(|s| s.audio.iter().any(|c| &c.media == id)) || p.music.as_ref().is_some_and(|m| &m.media == id);
                 if used {
                     return Err("this sound is still used in a scene".into());
                 }
@@ -367,6 +404,44 @@ impl Command {
                 for d in parts {
                     crate::pack::Part::compile(d)?;
                     p.parts.insert(d.id.clone(), d.clone());
+                }
+            }
+            Command::SetCaptions { captions } => {
+                let mut c = captions.clone();
+                c.size = c.size.clamp(8.0, 200.0);
+                c.words = c.words.clamp(1, 12);
+                c.y = c.y.clamp(0.0, 1.0);
+                c.stroke_width = c.stroke_width.clamp(0.0, 40.0);
+                p.captions = c;
+            }
+            Command::CameraMove { scene, kind, frame, duration, target, strength } => {
+                let snapshot = p.clone();
+                let s = scene_mut(p, scene)?;
+                crate::camera::apply(&snapshot, s, *kind, *frame, *duration, target.as_deref(), *strength)?;
+            }
+            Command::AutoCamera { scene, style, strength } => {
+                let snapshot = p.clone();
+                let s = scene_mut(p, scene)?;
+                crate::camera::auto(&snapshot, s, *style, *strength)?;
+            }
+            Command::AddBuiltinMedia { sound } => {
+                let id = crate::sfx::media_id(sound);
+                if !p.media.contains_key(&id) {
+                    let m = crate::sfx::media(sound, p.fps).ok_or_else(|| format!("no built-in sound {sound:?}"))?;
+                    p.media.insert(id, Arc::new(m));
+                }
+            }
+            Command::SetMusic { music } => {
+                if let Some(m) = music {
+                    if !p.media.contains_key(&m.media) {
+                        return Err(format!("no media {:?}", m.media));
+                    }
+                    let mut m = m.clone();
+                    m.volume = m.volume.clamp(0.0, 2.0);
+                    m.duck = m.duck.clamp(0.0, 1.0);
+                    p.music = Some(m);
+                } else {
+                    p.music = None;
                 }
             }
             Command::AddPose { pose } => {

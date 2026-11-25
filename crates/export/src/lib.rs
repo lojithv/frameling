@@ -116,6 +116,9 @@ pub fn export_video(
     cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
         .args(["-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{w}x{h}"), "-r", &fps.to_string(), "-i", "-"]);
     for ev in &events {
+        if ev.looped {
+            cmd.args(["-stream_loop", "-1"]);
+        }
         cmd.arg("-i").arg(&media_files[&ev.media]);
     }
     let secs = |frames: u32| frames as f64 / fps as f64;
@@ -123,12 +126,17 @@ pub fn export_video(
         let mut filter = String::new();
         for (i, ev) in events.iter().enumerate() {
             let delay_ms = (secs(ev.at) * 1000.0).round() as u64;
+            let shaped = ev.fade_in > 0 || ev.fade_out > 0 || !ev.ducks.is_empty();
+            let (pre, post) = if shaped {
+                (String::new(), format!(",volume='{}':eval=frame", gain_expr(ev, fps)))
+            } else {
+                (format!(",volume={:.3}", ev.volume), String::new())
+            };
             filter.push_str(&format!(
-                "[{}:a]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,aresample=48000,volume={:.3},adelay={delay_ms}:all=1[a{i}];",
+                "[{}:a]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,aresample=48000{pre},adelay={delay_ms}:all=1{post}[a{i}];",
                 i + 1,
                 secs(ev.trim),
                 secs(ev.frames),
-                ev.volume
             ));
         }
         for i in 0..events.len() {
@@ -137,7 +145,11 @@ pub fn export_video(
         // Stereo out: FFmpeg 9.1's AAC encoder can loop forever on a 192 kb/s mono
         // stream (all voice lines are mono), which froze exports on Windows.
         filter.push_str(&format!("amix=inputs={}:normalize=0:duration=longest,aformat=channel_layouts=stereo[aout]", events.len()));
-        cmd.args(["-filter_complex", &filter, "-map", "0:v", "-map", "[aout]"]);
+        // Long ducking expressions can pass Windows' command-line limit, so
+        // the graph goes in a file.
+        let graph = tmp.join("graph.txt");
+        std::fs::write(&graph, &filter).map_err(|e| format!("write filter graph: {e}"))?;
+        cmd.arg("-/filter_complex").arg(&graph).args(["-map", "0:v", "-map", "[aout]"]);
     }
     if webm {
         cmd.args(["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", &(opts.crf as u32 + 12).to_string(), "-row-mt", "1"]);
@@ -204,6 +216,42 @@ pub fn export_video(
         return Err(format!("FFmpeg failed: {}", tail.into_iter().rev().collect::<Vec<_>>().join(" | ")));
     }
     Ok(())
+}
+
+/// The event's gain curve (`AudioEvent::gain`) as an FFmpeg expression of
+/// `t`, the output time in seconds (the filter runs after `adelay`).
+fn gain_expr(ev: &frameling_core::AudioEvent, fps: u32) -> String {
+    let s = |f: f64| f / fps as f64;
+    let start = s(ev.at as f64);
+    let end = s((ev.at + ev.frames) as f64);
+    let mut e = format!("{:.4}", ev.volume);
+    if ev.fade_in > 0 {
+        e.push_str(&format!("*clip((t-{start:.4})/{:.4},0,1)", s(ev.fade_in as f64)));
+    }
+    if ev.fade_out > 0 {
+        e.push_str(&format!("*clip(({end:.4}-t)/{:.4},0,1)", s(ev.fade_out as f64)));
+    }
+    if !ev.ducks.is_empty() {
+        let r = s(ev.duck_ramp.max(1) as f64);
+        let terms: Vec<String> = ev
+            .ducks
+            .iter()
+            .map(|&[a, b]| format!("clip((t-{:.4})/{r:.4},0,1)*clip(({:.4}-t)/{r:.4},0,1)", s(a as f64) - r, s(b as f64) + r))
+            .collect();
+        e.push_str(&format!("*(1-{:.4}*min(1,{}))", 1.0 - ev.duck_level, terms.join("+")));
+    }
+    e
+}
+
+#[cfg(test)]
+mod gain_tests {
+    #[test]
+    fn expression_has_every_part() {
+        let ev = frameling_core::AudioEvent { media: "m".into(), at: 30, frames: 300, volume: 0.5, fade_in: 15, fade_out: 30, ducks: vec![[60, 90], [150, 200]], duck_level: 0.3, duck_ramp: 7, ..Default::default() };
+        let e = super::gain_expr(&ev, 30);
+        assert!(e.starts_with("0.5000*clip((t-1.0000)/0.5000,0,1)*clip((11.0000-t)/1.0000,0,1)*(1-0.7000*min(1,"), "{e}");
+        assert_eq!(e.matches("clip(").count(), 6);
+    }
 }
 
 struct Cleanup(PathBuf);

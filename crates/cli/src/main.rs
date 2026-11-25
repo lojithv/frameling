@@ -7,9 +7,12 @@
 //!   frameling voices [--tts DIR]                    list text-to-speech voices
 //!   frameling say <project> <scene-id> <character-id> "line" [--voice ID --speed 1.0 --out FILE --tts DIR]
 //!                                                   add a spoken, lip-synced line (placed after the last one)
-//!   frameling script <screenplay.txt> <out.frameling> [--bubbles]   script-to-video
+//!   frameling script <screenplay.txt> <out.frameling> [--bubbles --shape vertical|wide|square --music ID|--no-music]   script-to-video
 //!   frameling mcp <project.frameling>              MCP server for AI agents (stdio); see docs/AGENTS.md
+//!   frameling new <template> <out.frameling> [--shape vertical|wide|square]   start from a template
+//!   frameling templates                             list templates
 //!   frameling sheet <out.png>                       contact sheet of every action and expression (dev aid)
+//!   frameling mouths <out.png>                      every lip-sync mouth shape of every mouth set (dev aid)
 
 mod mcp;
 mod screenplay;
@@ -146,6 +149,7 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
                 duration_frames: frames,
                 envelope,
                 source: Some(frameling_core::MediaSource::Tts { text: text.to_string(), voice: voice.clone(), speed }),
+                size: None,
             };
             let clip_id = format!("line-{n}-{}", std::process::id());
             ed.apply(&Command::AddLine { scene: scene.to_string(), clip_id, media, speaker: Some(who.to_string()), start: None }, None)?;
@@ -156,7 +160,7 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
         Some("script") => {
             let (src, out) = (pos.get(1).ok_or("missing screenplay")?, pos.get(2).ok_or("missing output")?);
             let script = std::fs::read_to_string(src.as_str()).map_err(|e| format!("{src}: {e}"))?;
-            let (p, log) = screenplay::build(&script, &library(&args)?, &tts_engine(&args), &screenplay::Options { bubbles: args.iter().any(|a| a == "--bubbles") })?;
+            let (p, log) = screenplay::build(&script, &library(&args)?, &tts_engine(&args), &screenplay::Options { bubbles: args.iter().any(|a| a == "--bubbles"), shape: flag(&args, "--shape").unwrap_or_else(|| "wide".into()), music: if args.iter().any(|a| a == "--no-music") { String::new() } else { flag(&args, "--music").unwrap_or_else(|| "music-lofi".into()) } })?;
             for l in log {
                 println!("{l}");
             }
@@ -168,10 +172,30 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
             let server = mcp::Server::new(PathBuf::from(path.as_str()), library(&args)?, tts_engine(&args))?;
             mcp::serve(server)?;
         }
+        Some("templates") => {
+            for t in frameling_core::templates::catalog() {
+                println!("{:<12} {} ({}): {}", t.id, t.name, t.best, t.description);
+            }
+        }
+        Some("new") => {
+            let id = pos.get(1).ok_or("missing template (see: frameling templates)")?;
+            let out = pos.get(2).ok_or("missing output")?;
+            let shape = flag(&args, "--shape").unwrap_or_else(|| "vertical".into());
+            let p = frameling_core::templates::build(id, &shape).ok_or_else(|| format!("no template {id:?}"))?;
+            std::fs::write(out.as_str(), p.to_json_pretty()).map_err(|e| e.to_string())?;
+            println!("wrote {out} ({}, {}x{})", p.name, p.width, p.height);
+        }
         Some("sheet") => {
             let out = pos.get(1).ok_or("missing output")?;
             let lib = library(&args)?;
             let png = frameling_render::render_png(&contact_sheet(&lib), 1600, 1000)?;
+            std::fs::write(out.as_str(), png).map_err(|e| e.to_string())?;
+            println!("wrote {out}");
+        }
+        Some("mouths") => {
+            let out = pos.get(1).ok_or("missing output")?;
+            let lib = library(&args)?;
+            let png = frameling_render::render_png(&mouth_sheet(&lib), 1800, 900)?;
             std::fs::write(out.as_str(), png).map_err(|e| e.to_string())?;
             println!("wrote {out}");
         }
@@ -180,6 +204,35 @@ Built-in voices speak 31 languages: add @<lang> to the id, e.g. supertonic:F1@fr
         }
     }
     Ok(())
+}
+
+/// Dev aid: the nine lip-sync shapes (columns) for each mouth set (rows).
+fn mouth_sheet(lib: &Library) -> frameling_core::DisplayList {
+    use frameling_core::lipsync::Viseme;
+    use frameling_core::*;
+    let mut p = Project { width: 1800, height: 900, ..Default::default() };
+    let mut s = Scene::new("sheet", "sheet");
+    s.background.preset = "studio".into();
+    // Zoom in on the heads: world rows are 150 px apart.
+    s.camera.from = CamKey { x: 640.0, y: 300.0, zoom: 1.0 };
+    let rows: [(Look, &str); 4] = [
+        (Look::default(), "classic"),
+        (Look { mouth: MouthSet::Lips, hair_style: HairStyle::Long, skin: Color::rgb(0xc6, 0x8b, 0x62), ..Default::default() }, "lips"),
+        (Look { mouth: MouthSet::Lips, hair_style: HairStyle::Bun, skin: Color::rgb(0xf6, 0xd5, 0xbd), ..Default::default() }, "lips2"),
+        (Look::stick(false), "stick"),
+    ];
+    for (r, (look, name)) in rows.iter().enumerate() {
+        for (c, v) in Viseme::ALL.iter().enumerate() {
+            let ch = CharacterItem { look: look.clone(), ..Default::default() };
+            let mut it = Item { id: format!("{name}{c}"), x: 120.0 + c as f32 * 130.0, y: 230.0 + r as f32 * 150.0, scale: 0.62, kind: ItemKind::Character(ch), ..Default::default() };
+            let mut track = Track::default();
+            track.keys.push(Key { frame: 0, value: serde_json::Value::from(v.name()), interp: Default::default() });
+            it.tracks.insert("mouth".into(), track);
+            s.items.push(it);
+        }
+    }
+    p.scenes = vec![s];
+    evaluate(&p, lib, 3)
 }
 
 /// Dev aid: every action (at 3 phases) and every expression on one image.

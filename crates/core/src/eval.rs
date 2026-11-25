@@ -30,7 +30,8 @@ pub struct ItemHit {
 
 /// Evaluate the whole project at a global frame, including scene transitions.
 pub fn evaluate(project: &Project, lib: &Library, frame: u32) -> DisplayList {
-    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![] };
+    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![], images: Default::default() };
+    dl.images = image_set(project);
     let Some((i, local)) = project.locate(frame) else {
         return dl;
     };
@@ -79,13 +80,19 @@ pub fn evaluate(project: &Project, lib: &Library, frame: u32) -> DisplayList {
 
 /// Evaluate one scene on its own (what the editor shows while editing a scene).
 pub fn evaluate_scene(project: &Project, lib: &Library, scene: usize, local: u32) -> (DisplayList, Vec<ItemHit>) {
-    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![] };
+    let mut dl = DisplayList { width: project.width, height: project.height, background: Some(Color::BLACK), ops: vec![], images: Default::default() };
+    dl.images = image_set(project);
     let Some(s) = project.scenes.get(scene) else {
         return (dl, vec![]);
     };
     let (ops, hits) = scene_ops(project, lib, s, local);
     dl.ops = ops;
     (dl, hits)
+}
+
+/// The project's pictures, for the renderer.
+fn image_set(project: &Project) -> std::collections::BTreeMap<String, std::sync::Arc<Media>> {
+    project.media.iter().filter(|(_, m)| m.is_image()).map(|(k, m)| (k.clone(), m.clone())).collect()
 }
 
 /// Camera centre and zoom at a local frame: the scene's from/to move, with
@@ -114,14 +121,25 @@ pub fn camera_transform(project: &Project, scene: &Scene, local: u32) -> Affine 
     let k = camera_at(scene, local);
     let (w, h) = (project.width as f32, project.height as f32);
     let z = k.zoom.max(0.05) * view_scale(project);
-    Affine::translate(w / 2.0, h / 2.0).then(&Affine::scale(z, z)).then(&Affine::translate(-k.x, -k.y))
+    let (sx, sy, roll) = crate::camera::shake(anim::camera_shake(scene, local), local, hash_str(&scene.id));
+    Affine::translate(w / 2.0, h / 2.0)
+        .then(&Affine::rotate_deg(roll))
+        .then(&Affine::scale(z, z))
+        .then(&Affine::translate(-k.x - sx, -k.y - sy))
 }
 
 fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Vec<Op>, Vec<ItemHit>) {
     let mut world = Vec::new();
 
     // Background, in design units like everything else in the world.
-    if let Some(bg) = lib.backgrounds.get(&scene.background.preset) {
+    let picture = scene.background.image.as_ref().and_then(|id| project.media.get(id)).filter(|m| m.is_image());
+    if let Some(m) = picture {
+        // Cover the whole world (1280x720), centred, like CSS background-size: cover.
+        let a = m.aspect();
+        let (w, h) = if a > DESIGN_H / DESIGN_W { (DESIGN_W, DESIGN_W * a) } else { (DESIGN_H / a, DESIGN_H) };
+        world.push(Op::fill(Path::rect(-DESIGN_W, -DESIGN_H, DESIGN_W * 3.0, DESIGN_H * 3.0), Color::BLACK));
+        world.push(Op::Image { media: m.id.clone(), x: (DESIGN_W - w) / 2.0, y: (DESIGN_H - h) / 2.0, w, h, r: 0.0 });
+    } else if let Some(bg) = lib.backgrounds.get(&scene.background.preset) {
         world.push(Op::group(Affine::IDENTITY, 1.0, bg.ops(&scene.background.colors)));
     } else {
         let c = scene.background.colors.first().copied().unwrap_or(Color::rgb(0xee, 0xef, 0xf4));
@@ -129,13 +147,23 @@ fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Ve
     }
 
     let cam = camera_transform(project, scene, local);
+    // Pinned text ignores the camera: it is placed as if the camera were at
+    // its home position, and drawn above the world.
+    let pin = pinned_transform(project);
+    let mut pinned = Vec::new();
     let mut hits = Vec::with_capacity(scene.items.len());
     for item in &scene.items {
+        let is_pinned = is_pinned(item);
+        let cam = if is_pinned { pin } else { cam };
         match item_op(project, lib, scene, item, local) {
             Some(op) => {
                 let b = op.bounds();
                 hits.push(ItemHit { id: item.id.clone(), bounds: if b.is_empty() { b } else { b.transformed(&cam) }, visible: true });
-                world.push(op);
+                if is_pinned {
+                    pinned.push(op);
+                } else {
+                    world.push(op);
+                }
             }
             None => {
                 // Still report where it would be, so hidden items can be selected.
@@ -151,7 +179,26 @@ fn scene_ops(project: &Project, lib: &Library, scene: &Scene, local: u32) -> (Ve
             }
         }
     }
-    (vec![Op::group(cam, 1.0, world)], hits)
+    let mut ops = vec![Op::group(cam, 1.0, world)];
+    if !pinned.is_empty() {
+        ops.push(Op::group(pin, 1.0, pinned));
+    }
+    ops.extend(crate::captions::caption_ops(project, scene, local));
+    (ops, hits)
+}
+
+/// Text pinned to the frame (it does not follow the camera).
+pub fn is_pinned(item: &Item) -> bool {
+    matches!(&item.kind, ItemKind::Text(t) if t.pinned)
+}
+
+/// Where pinned items are drawn: the camera at its home position (centre of
+/// the design stage, zoom 1), whatever the scene's camera does.
+pub fn pinned_transform(project: &Project) -> Affine {
+    let (w, h) = (project.width as f32, project.height as f32);
+    let z = view_scale(project);
+    let home = CamKey::default();
+    Affine::translate(w / 2.0, h / 2.0).then(&Affine::scale(z, z)).then(&Affine::translate(-home.x, -home.y))
 }
 
 /// Where an item is at a local frame (motion path and keyframes), whether it
@@ -172,23 +219,45 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
     let (mut x, mut y, moving, dir, flip) = (tr.x, tr.y, tr.moving, tr.dir, tr.flip);
     let mut opacity = tr.opacity.clamp(0.0, 1.0);
     let mut scale = tr.scale;
+    let mut spin = 0.0;
 
     // Enter / exit effects
     let scene_end = item.end.unwrap_or(scene.duration.max(1));
     let to_end = scene_end as f32 - local as f32;
+    let view_h = project.height as f32 / view_scale(project);
     let mut apply = |effect: Effect, t: f32, entering: bool| {
         if t >= 1.0 {
             return;
         }
-        let e = Ease::Out.apply(t.max(0.0));
+        let t = t.max(0.0);
+        let e = Ease::Out.apply(t);
         match effect {
             Effect::None => {}
-            Effect::Fade => opacity *= t.max(0.0),
-            Effect::Pop => scale *= if entering { Ease::Back.apply(t.max(0.0)) } else { e },
+            Effect::Fade => opacity *= t,
+            Effect::Pop => scale *= if entering { Ease::Back.apply(t) } else { e },
             // Slide distances are in world units: most of the visible frame.
             Effect::SlideLeft => x -= (1.0 - e) * (project.width as f32 / view_scale(project) * 0.8),
             Effect::SlideRight => x += (1.0 - e) * (project.width as f32 / view_scale(project) * 0.8),
-            Effect::SlideUp => y += (1.0 - e) * (project.height as f32 / view_scale(project) * 0.9),
+            Effect::SlideUp => y += (1.0 - e) * (view_h * 0.9),
+            Effect::SlideDown => y -= (1.0 - e) * (view_h * 0.9),
+            Effect::Bounce => {
+                if entering {
+                    y -= (1.0 - bounce_out(t)) * view_h * 0.6;
+                    opacity *= (t * 4.0).min(1.0);
+                } else {
+                    // A small hop, then up and away.
+                    y -= (1.0 - t) * (1.0 - t) * view_h * 0.7 - (1.0 - t) * 30.0;
+                    opacity *= (t * 3.0).min(1.0);
+                }
+            }
+            Effect::Zoom => {
+                scale *= 1.0 + (1.0 - e) * 1.6;
+                opacity *= t;
+            }
+            Effect::Spin => {
+                scale *= e;
+                spin += (1.0 - e) * if entering { -360.0 } else { 360.0 };
+            }
         }
     };
     apply(item.enter, since / EFFECT_FRAMES, true);
@@ -205,15 +274,17 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
     let children = match &item.kind {
         ItemKind::Character(c) => {
             let secs = since / fps * c.speed.max(0.05);
-            let level = speech_level(project, scene, &item.id, local);
-            let mut pose = character_pose(project, lib, item, c, local, secs, moving, dir, flip, level.is_some());
-            // From behind there is no mouth to move.
-            let level = if character_view(item, c, local, moving, dir, flip).yaw().abs() > 105.0 { None } else { level };
+            let speech = speech_mouth(project, scene, &item.id, c.lip_sync, local);
+            let mut pose = character_pose(project, lib, item, c, local, secs, moving, dir, flip, speech.is_some());
+            // A shape keyed by hand wins; from behind there is no mouth to move.
+            let auto = if c.lip_sync == crate::lipsync::LipSync::Off { None } else { speech };
+            let mouth = anim::mouth(&item.tracks, local).or(auto).unwrap_or_default();
+            let mouth = if character_view(item, c, local, moving, dir, flip).yaw().abs() > 105.0 { crate::lipsync::Viseme::Rest } else { mouth };
             pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
             anim::apply_bones(&item.tracks, &mut pose, local);
             let phase = (hash_str(&item.id) % 1000) as f32 / 1000.0 * 3.0;
             let blink = ((local as f32 / fps) + phase).rem_euclid(3.6) < 0.12;
-            let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth: level.unwrap_or(0) };
+            let face = Face { expression: anim::expression(c, &item.tracks, local), blink, mouth };
             let look = anim::resolve_look(c, &item.tracks, local);
             let wear = crate::parts::worn(project, lib, &look);
             let view = character_view(item, c, local, moving, dir, flip);
@@ -223,11 +294,22 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
             Some(d) => d.ops(&p.colors),
             None => vec![Op::fill(Path::round_rect(-40.0, -80.0, 80.0, 80.0, 8.0), Color::rgb(0xff, 0x00, 0xff))],
         },
-        ItemKind::Text(t) => text_ops(t, since, fps),
+        ItemKind::Image(im) => match project.media.get(&im.media) {
+            Some(m) if m.is_image() => {
+                let (w, h) = (im.width.max(1.0), im.width.max(1.0) * m.aspect());
+                vec![Op::Image { media: m.id.clone(), x: -w / 2.0, y: -h / 2.0, w, h, r: im.radius.max(0.0) }]
+            }
+            _ => vec![Op::fill(Path::round_rect(-60.0, -40.0, 120.0, 80.0, 8.0), Color::rgb(0xff, 0x00, 0xff))],
+        },
+        ItemKind::Text(t) => {
+            let t = anim::resolve_text(t, &item.tracks, local);
+            let until_end = item.end.map(|e| (e as f32 - local as f32) / fps);
+            text_ops(&t, since / fps, until_end, &item.id)
+        }
     };
     let sy = scale * tr.scale_y;
     let sx = (if flip { -scale } else { scale }) * tr.scale_x;
-    let tf = Affine::translate(x, y).then(&Affine::rotate_deg(tr.rotation)).then(&Affine::scale(sx, sy));
+    let tf = Affine::translate(x, y).then(&Affine::rotate_deg(tr.rotation + spin)).then(&Affine::scale(sx, sy));
     // Text should never render mirrored.
     let tf = if matches!(item.kind, ItemKind::Text(_)) && flip {
         tf.then(&Affine::scale(-1.0, 1.0))
@@ -237,9 +319,12 @@ fn item_op(project: &Project, lib: &Library, scene: &Scene, item: &Item, local: 
     Some(Op::group(tf, opacity, children))
 }
 
-/// Lip-sync mouth level (1..=3) if this character is speaking at `local`.
-fn speech_level(project: &Project, scene: &Scene, id: &str, local: u32) -> Option<u8> {
-    let mut best: Option<f32> = None;
+/// The lip-sync mouth shape if this character is speaking at `local`
+/// (`Some(Rest)` in a pause inside a line). With several lines at once the
+/// loudest one wins.
+fn speech_mouth(project: &Project, scene: &Scene, id: &str, mode: crate::lipsync::LipSync, local: u32) -> Option<crate::lipsync::Viseme> {
+    use crate::lipsync::{self, LipSync};
+    let mut best: Option<(f32, lipsync::Viseme)> = None;
     for clip in scene.audio.iter().filter(|c| c.speaker.as_deref() == Some(id)) {
         let Some(media) = project.media.get(&clip.media) else { continue };
         let len = clip.play_frames(media);
@@ -250,20 +335,55 @@ fn speech_level(project: &Project, scene: &Scene, id: &str, local: u32) -> Optio
         let v = media.envelope.get(idx).copied().unwrap_or(0.0);
         let prev = idx.checked_sub(1).and_then(|i| media.envelope.get(i)).copied().unwrap_or(v);
         let v = v * 0.7 + prev * 0.3;
-        best = Some(best.map_or(v, |b| b.max(v)));
+        if best.is_some_and(|(b, _)| b >= v) {
+            continue;
+        }
+        let shape = match mode {
+            LipSync::Shapes => lipsync::timeline(lipsync::clip_text(clip, media), media).get(idx).copied().unwrap_or_default(),
+            _ => lipsync::simple(v),
+        };
+        best = Some((v, shape));
     }
-    best.map(|v| match v {
-        v if v < 0.12 => 0,
-        v if v < 0.35 => 1,
-        v if v < 0.65 => 2,
-        _ => 3,
-    })
+    best.map(|b| b.1)
 }
 
-fn text_ops(t: &TextItem, since: f32, fps: f32) -> Vec<Op> {
-    let visible = (t.typewriter > 0.0).then(|| (since / fps * t.typewriter).floor() as usize);
-    let block = text::layout(&t.text, t.size.max(4.0), t.width.max(40.0), visible);
-    let (bw, bh) = (block.width, block.height);
+/// Standard bounce-out easing (a ball dropped onto the floor).
+fn bounce_out(t: f32) -> f32 {
+    let (n, d) = (7.5625, 2.75);
+    let t = t.clamp(0.0, 1.0);
+    if t < 1.0 / d {
+        n * t * t
+    } else if t < 2.0 / d {
+        let t = t - 1.5 / d;
+        n * t * t + 0.75
+    } else if t < 2.5 / d {
+        let t = t - 2.25 / d;
+        n * t * t + 0.9375
+    } else {
+        let t = t - 2.625 / d;
+        n * t * t + 0.984375
+    }
+}
+
+/// Seconds one letter (or word) takes to animate in a reveal.
+fn reveal_secs(r: Reveal) -> f32 {
+    match r {
+        Reveal::None | Reveal::Typewriter => 0.0,
+        Reveal::PopLetters => 0.28,
+        Reveal::PopWords => 0.35,
+        Reveal::RiseWords => 0.4,
+        Reveal::Bounce => 0.6,
+        Reveal::Fade => 0.35,
+    }
+}
+
+/// Draws a text item. `secs` = seconds since it appeared; `until_end` =
+/// seconds until it leaves (if it has an end), for leaving reveals.
+fn text_ops(t: &TextItem, secs: f32, until_end: Option<f32>, id: &str) -> Vec<Op> {
+    let size = t.size.max(4.0);
+    let shown = if t.uppercase { t.text.to_uppercase() } else { t.text.clone() };
+    let lay = text::layout_glyphs(&shown, t.font, size, t.width.max(40.0));
+    let (bw, bh) = (lay.width, lay.height);
     let mut out = Vec::new();
     match t.style {
         TextStyle::Bubble | TextStyle::Thought => {
@@ -305,18 +425,147 @@ fn text_ops(t: &TextItem, since: f32, fps: f32) -> Vec<Op> {
             let (px, py) = (t.size * 0.7, t.size * 0.45);
             out.push(Op::fill(Path::round_rect(-bw / 2.0 - px, -bh / 2.0 - py, bw + 2.0 * px, bh + 2.0 * py, 10.0), t.fill));
         }
-        TextStyle::Title => {
-            let shadow = Op::group(Affine::translate(0.0, t.size * 0.08), 1.0, vec![Op::fill(block.path.clone(), Color::rgba(0, 0, 0, 90))]);
-            out.push(shadow);
-        }
-        TextStyle::Plain => {}
+        TextStyle::Title | TextStyle::Plain => {}
     }
-    out.push(Op::fill(block.path, t.color));
-    out
+
+    // ---- reveals: progress 0..1 for every glyph
+    // Older files: a typewriter speed without a reveal is a typewriter reveal.
+    let (rin, speed_in) = if t.reveal == Reveal::None && t.typewriter > 0.0 { (Reveal::Typewriter, t.typewriter) } else { (t.reveal, t.reveal_speed) };
+    let speed_in = speed_in.max(0.5);
+    let speed_out = t.reveal_speed.max(0.5);
+    let rout = if until_end.is_some() { t.reveal_out } else { Reveal::None };
+    let units = |r: Reveal| if r.by_word() { lay.words } else { lay.letters }.max(1) as f32;
+    let unit = |r: Reveal, g: &text::Glyph| if r.by_word() { g.word } else { g.index } as f32;
+    // Seconds into leaving (negative = not leaving yet).
+    let leaving = match (rout, until_end) {
+        (Reveal::None, _) | (_, None) => f32::NEG_INFINITY,
+        (Reveal::Typewriter, Some(te)) => units(rout) / speed_out - te,
+        (r, Some(te)) => (units(r) - 1.0) / speed_out + reveal_secs(r) - te,
+    };
+    let typed_in = (secs * speed_in).floor();
+    let typed_out = units(Reveal::Typewriter) - (leaving * speed_out).floor();
+    // (style, progress) for a glyph.
+    let phase = |g: &text::Glyph| -> (Reveal, f32) {
+        if leaving >= 0.0 {
+            let p = if rout == Reveal::Typewriter {
+                if (g.index as f32) < typed_out {
+                    1.0
+                } else {
+                    0.0
+                }
+            } else {
+                1.0 - ((leaving - unit(rout, g) / speed_out) / reveal_secs(rout)).clamp(0.0, 1.0)
+            };
+            if p < 1.0 {
+                return (rout, p);
+            }
+        }
+        let p = match rin {
+            Reveal::None => 1.0,
+            Reveal::Typewriter => {
+                if (g.index as f32) < typed_in {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            r => ((secs - unit(r, g) / speed_in) / reveal_secs(r)).clamp(0.0, 1.0),
+        };
+        (rin, p)
+    };
+
+    // Word centres, for animating whole words.
+    let mut word_box = vec![(f32::MAX, f32::MIN, 0.0f32); lay.words];
+    for g in lay.glyphs.iter().filter(|g| !g.ch.is_whitespace()) {
+        let b = &mut word_box[g.word];
+        b.0 = b.0.min(g.x);
+        b.1 = b.1.max(g.x + g.advance);
+        b.2 = g.baseline;
+    }
+    let wave = t.emphasis == Emphasis::Wave;
+    let mut glyphs: Vec<(Affine, f32, &Path)> = Vec::new();
+    let mut cursor: Option<(f32, f32)> = None;
+    let typing = (rin == Reveal::Typewriter && typed_in < units(Reveal::Typewriter)) || (rout == Reveal::Typewriter && leaving >= 0.0);
+    for g in &lay.glyphs {
+        let (r, p) = phase(g);
+        if p <= 0.0 {
+            continue;
+        }
+        if typing {
+            cursor = Some((g.x + g.advance, g.baseline));
+        }
+        if g.path.is_empty() {
+            continue;
+        }
+        let (cx, cy) = if r.by_word() {
+            let b = word_box[g.word];
+            ((b.0 + b.1) / 2.0, b.2 - size * 0.36)
+        } else {
+            g.center(size)
+        };
+        let around = |s: f32| Affine::translate(cx, cy).then(&Affine::scale(s, s)).then(&Affine::translate(-cx, -cy));
+        let (mut tf, op) = match r {
+            _ if p >= 1.0 => (Affine::IDENTITY, 1.0),
+            Reveal::PopLetters | Reveal::PopWords => (around(Ease::Back.apply(p).max(0.0)), (p * 3.0).min(1.0)),
+            Reveal::RiseWords => (Affine::translate(0.0, (1.0 - Ease::Out.apply(p)) * size * 0.9), p),
+            Reveal::Bounce => (Affine::translate(0.0, -(1.0 - bounce_out(p)) * size * 2.2), (p * 4.0).min(1.0)),
+            Reveal::Fade => (Affine::IDENTITY, p),
+            Reveal::None | Reveal::Typewriter => (Affine::IDENTITY, 1.0),
+        };
+        if wave {
+            let dy = (secs * 6.0 - g.index as f32 * 0.45).sin() * size * 0.12;
+            tf = Affine::translate(0.0, dy).then(&tf);
+        }
+        glyphs.push((tf, op, &g.path));
+    }
+    if typing && cursor.is_none() {
+        cursor = lay.glyphs.first().map(|g| (g.x, g.baseline));
+    }
+
+    let simple = glyphs.iter().all(|(a, o, _)| a.is_identity() && *o >= 1.0);
+    let layer = |mk: &dyn Fn(Path) -> Op| -> Vec<Op> {
+        if simple {
+            let mut p = Path::new();
+            for (_, _, g) in &glyphs {
+                p.extend(g);
+            }
+            vec![mk(p)]
+        } else {
+            glyphs.iter().map(|(a, o, g)| Op::group(*a, *o, vec![mk((*g).clone())])).collect()
+        }
+    };
+    if t.style == TextStyle::Title {
+        let off = t.size * 0.08;
+        out.push(Op::group(Affine::translate(0.0, off), 1.0, layer(&|p| Op::fill(p, Color::rgba(0, 0, 0, 90)))));
+    }
+    if t.stroke_width > 0.0 {
+        let (c, w) = (t.stroke, t.stroke_width * 2.0);
+        out.extend(layer(&|p| Op::stroke(p, c, w)));
+    }
+    let c = t.color;
+    out.extend(layer(&|p| Op::fill(p, c)));
+    if let Some((x, base)) = cursor {
+        out.push(Op::fill(Path::rect(x + size * 0.04, base - lay.ascent * 0.8, (size * 0.07).max(2.0), lay.ascent * 0.8 + lay.descent * 0.35), c));
+    }
+
+    match t.emphasis {
+        Emphasis::Pulse => {
+            let s = 1.0 + 0.06 * (secs * 5.0).sin();
+            vec![Op::group(Affine::scale(s, s), 1.0, out)]
+        }
+        Emphasis::Shake => {
+            let ph = (hash_str(id) % 628) as f32 / 100.0;
+            let a = size * 0.05;
+            let (dx, dy) = ((secs * 47.0 + ph).sin() * a, (secs * 59.0 + ph * 1.7).cos() * a);
+            let r = (secs * 41.0 + ph).sin() * 1.5;
+            vec![Op::group(Affine::translate(dx, dy).then(&Affine::rotate_deg(r)), 1.0, out)]
+        }
+        _ => out,
+    }
 }
 
-/// A sound to mix into the export.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+// A sound to mix into the export.
+#[derive(Clone, Debug, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioEvent {
     pub media: Id,
@@ -327,11 +576,118 @@ pub struct AudioEvent {
     /// Frames to play.
     pub frames: u32,
     pub volume: f32,
+    /// Repeat the media (from `trim`) until `frames` are filled.
+    #[serde(skip_serializing_if = "is_false")]
+    pub looped: bool,
+    /// Fade in / out, frames.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub fade_in: u32,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub fade_out: u32,
+    /// Ducking: global frame spans `[from, to)` where voices play. The gain
+    /// ramps down to `duck_level` over `duck_ramp` frames before each span
+    /// and back up after it (see [`AudioEvent::gain`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ducks: Vec<[u32; 2]>,
+    pub duck_level: f32,
+    pub duck_ramp: u32,
 }
 
-/// All audio on the global timeline, clipped to scene boundaries.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl AudioEvent {
+    /// Volume multiplier at global frame `f` (fractional): volume x fades x
+    /// ducking. Every player uses this same curve: the editor and web export
+    /// sample it as gain automation, the native export writes it as an FFmpeg
+    /// expression (`frameling_export`).
+    pub fn gain(&self, f: f32) -> f32 {
+        let start = self.at as f32;
+        let end = (self.at + self.frames) as f32;
+        let mut g = self.volume;
+        if self.fade_in > 0 {
+            g *= ((f - start) / self.fade_in as f32).clamp(0.0, 1.0);
+        }
+        if self.fade_out > 0 {
+            g *= ((end - f) / self.fade_out as f32).clamp(0.0, 1.0);
+        }
+        g * self.duck_factor(f)
+    }
+
+    /// The ducking part of the gain alone.
+    pub fn duck_factor(&self, f: f32) -> f32 {
+        let r = self.duck_ramp.max(1) as f32;
+        let mut w = 0.0;
+        for &[a, b] in &self.ducks {
+            w += (((f - (a as f32 - r)) / r).clamp(0.0, 1.0)) * ((((b as f32 + r) - f) / r).clamp(0.0, 1.0));
+        }
+        1.0 - (1.0 - self.duck_level) * w.min(1.0)
+    }
+
+    /// Frames where the gain curve bends, sorted: sampling the gain there and
+    /// ramping linearly in between reproduces it.
+    pub fn gain_points(&self) -> Vec<u32> {
+        let r = self.duck_ramp.max(1);
+        let end = self.at + self.frames;
+        let mut v = vec![self.at, self.at + self.fade_in.min(self.frames), end.saturating_sub(self.fade_out), end];
+        for &[a, b] in &self.ducks {
+            v.extend([a.saturating_sub(r), a, b, b + r]);
+        }
+        v.retain(|&f| f >= self.at && f <= end);
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+}
+
+/// Global frame spans where someone speaks: clips with a speaker, recordings
+/// and typed lines. Spans closer than `gap` frames are merged, so music
+/// doesn't pump up between the lines of a conversation.
+pub fn voice_spans(project: &Project, gap: u32) -> Vec<[u32; 2]> {
+    let mut spans: Vec<[u32; 2]> = Vec::new();
+    for (scene, start) in project.scenes.iter().zip(project.scene_starts()) {
+        for clip in &scene.audio {
+            let Some(media) = project.media.get(&clip.media) else { continue };
+            let voice = clip.speaker.is_some() || matches!(media.source, Some(MediaSource::Tts { .. }) | Some(MediaSource::Recording));
+            if !voice || clip.start >= scene.duration {
+                continue;
+            }
+            let frames = clip.play_frames(media).min(scene.duration - clip.start);
+            // Skip silent lead-in and tail of the line.
+            let env = &media.envelope;
+            let from = clip.trim_start as usize;
+            let to = from + frames as usize;
+            let voiced = |i: &usize| env.get(*i).is_some_and(|&v| v > 0.08);
+            let (a, b) = match ((from..to).find(voiced), (from..to).rev().find(voiced)) {
+                (Some(a), Some(b)) => (a as u32 - clip.trim_start, b as u32 + 1 - clip.trim_start),
+                _ if env.is_empty() => (0, frames),
+                _ => continue,
+            };
+            spans.push([start + clip.start + a, start + clip.start + b]);
+        }
+    }
+    spans.sort_unstable();
+    let mut out: Vec<[u32; 2]> = Vec::new();
+    for s in spans {
+        match out.last_mut() {
+            Some(last) if s[0] <= last[1] + gap => last[1] = last[1].max(s[1]),
+            _ => out.push(s),
+        }
+    }
+    out
+}
+
+/// All audio on the global timeline, clipped to scene boundaries, plus the
+/// background music.
 pub fn audio_events(project: &Project) -> Vec<AudioEvent> {
     let mut out = Vec::new();
+    if let Some(ev) = music_event(project) {
+        out.push(ev);
+    }
     for (scene, start) in project.scenes.iter().zip(project.scene_starts()) {
         for clip in &scene.audio {
             let Some(media) = project.media.get(&clip.media) else { continue };
@@ -342,10 +698,38 @@ pub fn audio_events(project: &Project) -> Vec<AudioEvent> {
             if frames == 0 {
                 continue;
             }
-            out.push(AudioEvent { media: clip.media.clone(), at: start + clip.start, trim: clip.trim_start, frames, volume: clip.volume.max(0.0) });
+            out.push(AudioEvent { media: clip.media.clone(), at: start + clip.start, trim: clip.trim_start, frames, volume: clip.volume.max(0.0), ..Default::default() });
         }
     }
     out
+}
+
+/// The background music as an audio event (with its ducking under voices).
+pub fn music_event(project: &Project) -> Option<AudioEvent> {
+    let m = project.music.as_ref()?;
+    let media = project.media.get(&m.media)?;
+    let total = project.total_frames();
+    if m.start >= total || media.duration_frames <= m.trim_start {
+        return None;
+    }
+    let avail = media.duration_frames - m.trim_start;
+    let frames = if m.looped { total - m.start } else { avail.min(total - m.start) };
+    let fps = project.fps.max(1);
+    let ramp = (fps / 4).max(1);
+    let ducks = if m.duck < 0.999 { voice_spans(project, fps * 3 / 4 + 2 * ramp) } else { vec![] };
+    Some(AudioEvent {
+        media: m.media.clone(),
+        at: m.start,
+        trim: m.trim_start,
+        frames,
+        volume: m.volume.max(0.0),
+        looped: m.looped && avail < frames,
+        fade_in: m.fade_in.min(frames / 2),
+        fade_out: m.fade_out.min(frames / 2),
+        ducks,
+        duck_level: m.duck.clamp(0.0, 1.0),
+        duck_ramp: ramp,
+    })
 }
 
 /// One item on its own, fitted into `width` x `height` on a transparent
@@ -385,7 +769,7 @@ pub fn item_preview(lib: &Library, parts: &std::collections::BTreeMap<String, cr
             children.remove(0);
         }
     }
-    DisplayList { width, height, background: None, ops: vec![Op::group(fit, 1.0, ops)] }
+    DisplayList { width, height, background: None, ops: vec![Op::group(fit, 1.0, ops)], images: dl.images }
 }
 
 /// Running starts above this speed (stage px per frame at scale 1).
@@ -490,7 +874,7 @@ pub fn posed_character(project: &Project, lib: &Library, scene: &str, item: &str
     let fps = project.fps.max(1) as f32;
     let since = local.saturating_sub(it.start) as f32;
     let tr = anim::item_transform(it, local);
-    let speaking = speech_level(project, sc, &it.id, local).is_some();
+    let speaking = speech_mouth(project, sc, &it.id, crate::lipsync::LipSync::Simple, local).is_some();
     let mut pose = character_pose(project, lib, it, c, local, since / fps * c.speed.max(0.05), tr.moving, tr.dir, tr.flip, speaking);
     pose = crate::poses::apply_strips(pose, &c.poses, local, fps, project, lib);
     anim::apply_bones(&it.tracks, &mut pose, local);

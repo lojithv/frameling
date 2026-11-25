@@ -1,23 +1,50 @@
 <script lang="ts">
   import { app, fmtTime, eng } from "../lib/store.svelte";
+  import { sceneStarts } from "../lib/playback";
   import { exportVideo, cancelExport, isDesktop, type ExportSettings } from "../lib/platform";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
   const p = $derived(app.project!);
-  const presets = $derived([
-    { label: "720p", scale: 1280 / Math.max(p.width, p.height) },
-    { label: "1080p", scale: 1920 / Math.max(p.width, p.height) },
-    { label: "Draft (half size)", scale: 0.5 * (1280 / Math.max(p.width, p.height)) },
-  ]);
-  let preset = $state(1);
+
+  /** One-click presets: where the video is going decides its shape and size. */
+  const PRESETS = [
+    { id: "shorts", icon: "📱", label: "Shorts · Reels · TikTok", hint: "Vertical 1080×1920, subtitles burned in", frame: [1080, 1920], out: [1080, 1920], captions: true },
+    { id: "youtube", icon: "▶", label: "YouTube", hint: "Full HD 1920×1080", frame: [1920, 1080], out: [1920, 1080], captions: undefined },
+    { id: "square", icon: "⬛", label: "Square post", hint: "1080×1080 for feeds, subtitles burned in", frame: [1080, 1080], out: [1080, 1080], captions: true },
+    { id: "project", icon: "🎬", label: "As the project", hint: "", frame: null, out: null, captions: undefined },
+  ] as const;
+  let presetId = $state<(typeof PRESETS)[number]["id"]>("project");
+  let quality = $state<"high" | "draft">("high");
   let format = $state<"mp4" | "webm">("mp4");
-  const size = $derived.by(() => {
-    const s = presets[preset].scale;
-    return { w: Math.round((p.width * s) / 2) * 2, h: Math.round((p.height * s) / 2) * 2 };
+  let burnCaptions = $state(!!app.project?.captions?.enabled);
+  let thumb = $state(true);
+  let srt = $state(false);
+  const preset = $derived(PRESETS.find((x) => x.id === presetId)!);
+  $effect(() => {
+    // Presets made for social feeds turn subtitles on; others keep the project's choice.
+    burnCaptions = preset.captions ?? !!app.project?.captions?.enabled;
   });
+  const frame = $derived(preset.frame ? { width: preset.frame[0], height: preset.frame[1] } : { width: p.width, height: p.height });
+  const reshaped = $derived(frame.width / frame.height !== p.width / p.height);
+  const size = $derived.by(() => {
+    let [w, h] = preset.out ?? [Math.round((p.width * 1920) / Math.max(p.width, p.height)), Math.round((p.height * 1920) / Math.max(p.width, p.height))];
+    if (quality === "draft") [w, h] = [w / 2, h / 2];
+    return { w: Math.round(w / 2) * 2, h: Math.round(h / 2) * 2 };
+  });
+  /** Thumbnail at the playhead (global frame). */
+  const thumbFrame = $derived((sceneStarts()[app.sceneIndex] ?? 0) + app.frame);
 
   async function go() {
-    const s: ExportSettings = { width: size.w, height: size.h, format };
+    const s: ExportSettings = {
+      width: size.w,
+      height: size.h,
+      format,
+      frame: reshaped ? frame : undefined,
+      captions: burnCaptions,
+      thumbnail: thumb ? thumbFrame : null,
+      srt,
+      quality,
+    };
     await exportVideo(s);
     open = false;
   }
@@ -34,10 +61,21 @@
       {:else}
         <h2>Export video</h2>
         <p class="dim">{p.scenes.length} scenes · {fmtTime(eng().total_frames())} · {p.fps} fps</p>
-        <div class="opts">
-          {#each presets as pr, i}
-            <button class:on={preset === i} onclick={() => (preset = i)}>{pr.label}</button>
+        <div class="presets">
+          {#each PRESETS as pr}
+            <button class:on={presetId === pr.id} onclick={() => (presetId = pr.id)}>
+              <span class="ico">{pr.icon}</span>
+              <span><strong>{pr.label}</strong><small>{pr.hint || `${p.width}×${p.height} as you made it`}</small></span>
+            </button>
           {/each}
+        </div>
+        {#if reshaped}<p class="warn">Your project is {p.width}×{p.height}: this export re-frames it around the middle of the scene, so check that everyone is in shot.</p>{/if}
+        <label class="check"><input type="checkbox" bind:checked={burnCaptions} /> Burn in subtitles</label>
+        <label class="check"><input type="checkbox" bind:checked={thumb} /> Save a thumbnail (the frame at the playhead, {fmtTime(app.frame)})</label>
+        <label class="check"><input type="checkbox" bind:checked={srt} /> Save subtitles as .srt too</label>
+        <div class="opts">
+          <button class:on={quality === "high"} onclick={() => (quality = "high")}>Best quality</button>
+          <button class:on={quality === "draft"} onclick={() => (quality = "draft")}>Quick draft</button>
         </div>
         <div class="opts">
           <button class:on={format === "mp4"} onclick={() => (format = "mp4")}>MP4 (H.264)</button>
@@ -64,7 +102,7 @@
     z-index: 50;
   }
   .modal {
-    width: 420px;
+    width: 480px;
     background: var(--bg-1);
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -79,6 +117,44 @@
     color: var(--muted);
     font-size: 13px;
     line-height: 1.5;
+  }
+  .presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 12px 0 8px;
+  }
+  .presets button {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+  .presets .on {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  .presets small {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .ico {
+    font-size: 18px;
+  }
+  .check {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    font-size: 13px;
+    margin: 6px 0;
+  }
+  .warn {
+    font-size: 12px;
+    color: #ffcf5a;
+    margin: 4px 0;
   }
   .opts {
     display: flex;

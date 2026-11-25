@@ -1,8 +1,11 @@
 <script lang="ts">
   import { app, currentScene, run, toast } from "../lib/store.svelte";
-  import { CHARACTER_PRESETS, TEXT_PRESETS, newCharacter, newProp, newText, uid } from "../lib/defaults";
+  import { CHARACTER_PRESETS, TEXT_PRESETS, newCharacter, newImage, newProp, newTextPreset, uid } from "../lib/defaults";
+  import { importImage, imageUrl } from "../lib/images";
   import { itemThumb, backgroundThumb } from "../lib/thumbs";
-  import { importAudio } from "../lib/audio";
+  import { importAudio, previewSound, stopAudio } from "../lib/audio";
+  import { eng } from "../lib/store.svelte";
+  import type { Music, SoundInfo } from "../lib/types";
   import { loadPackFile } from "../lib/platform";
   import { loadMyCharacters } from "../lib/mycharacters";
   import type { CatalogEntry, Item, Scene } from "../lib/types";
@@ -12,6 +15,7 @@
     { id: "props", label: "Props", icon: "🪴" },
     { id: "backgrounds", label: "Scenes", icon: "🏞️" },
     { id: "text", label: "Text", icon: "💬" },
+    { id: "images", label: "Images", icon: "🖼️" },
     { id: "sound", label: "Sound", icon: "🎵" },
   ] as const;
   let tab = $state<(typeof tabs)[number]["id"]>("characters");
@@ -42,7 +46,7 @@
 
   function setBackground(id: string) {
     if (!scene) return;
-    run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: id, colors: [] } } as Scene });
+    run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: id, colors: [], image: null } } as Scene });
   }
 
   let importing = $state(false);
@@ -71,7 +75,78 @@
     run({ op: "addAudio", scene: scene.id, clip: { id: uid("clip"), media: mediaId, start: app.frame, volume: 1, speaker, trimStart: 0, length: null } });
   }
 
-  const media = $derived(Object.values(app.project?.media ?? {}));
+  const media = $derived(Object.values(app.project?.media ?? {}).filter((m) => !m.mime.startsWith("image/")));
+  const pictures = $derived(Object.values(app.project?.media ?? {}).filter((m) => m.mime.startsWith("image/")));
+
+  // ---------------------------------------------------- pictures
+  let readingImage = $state(false);
+  async function onImageFile(e: Event, asBackground: boolean) {
+    const input = e.target as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (!files.length || !scene) return;
+    readingImage = true;
+    try {
+      for (const f of files) {
+        const m = await importImage(f, f.name);
+        if (!run({ op: "addMedia", media: m })) continue;
+        if (asBackground) setPictureBackground(m.id);
+        else addPicture(m.id, m.name, m.size);
+      }
+    } catch (err) {
+      toast(`Could not read that image (${(err as Error).message})`, "error");
+    } finally {
+      readingImage = false;
+    }
+  }
+  function addPicture(id: string, name: string, size?: [number, number] | null) {
+    // Fit inside most of the visible frame.
+    const p = app.project!;
+    const k = Math.max(p.width / 1280, p.height / 720);
+    const vw = p.width / k;
+    const aspect = size ? size[1] / size[0] : 1;
+    const width = Math.round(Math.min(vw * 0.7, (720 * 0.55) / aspect));
+    add(newImage(id, name, width));
+  }
+  function setPictureBackground(id: string) {
+    if (!scene) return;
+    run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { ...$state.snapshot(scene.background), image: id } } as Scene });
+  }
+
+  // ---------------------------------------------------- built-in sounds
+  const sounds: SoundInfo[] = $derived(app.ready ? JSON.parse(eng().sound_catalog()) : []);
+  const effectsByCat = $derived.by(() => {
+    const groups = new Map<string, SoundInfo[]>();
+    for (const s of sounds.filter((s) => s.kind === "effect")) {
+      if (!groups.has(s.category)) groups.set(s.category, []);
+      groups.get(s.category)!.push(s);
+    }
+    return [...groups.entries()];
+  });
+  const loops = $derived(sounds.filter((s) => s.kind === "music"));
+  let previewing = $state<string | null>(null);
+  function preview(id: string) {
+    if (previewing === id) {
+      stopAudio();
+      previewing = null;
+      return;
+    }
+    previewing = id;
+    previewSound(id);
+  }
+  function addEffect(s: SoundInfo) {
+    if (!scene) return;
+    const clip = { id: uid("clip"), media: `sound-${s.id}`, start: app.frame, volume: 0.8, speaker: null, trimStart: 0, length: null };
+    if (run({ op: "batch", commands: [{ op: "addBuiltinMedia", sound: s.id }, { op: "addAudio", scene: scene.id, clip }] })) toast(`${s.name} added at the playhead`);
+  }
+  /** Use a sound (built-in id or project media) as the movie's background music. */
+  function useAsMusic(mediaId: string, builtin?: string) {
+    const old = app.project?.music;
+    const music: Music = { media: mediaId, volume: old?.volume ?? 0.5, duck: old?.duck ?? 0.3, fadeIn: old?.fadeIn ?? 15, fadeOut: old?.fadeOut ?? 45, looped: old?.looped ?? true, start: 0, trimStart: 0 };
+    const cmds: import("../lib/types").Command[] = builtin ? [{ op: "addBuiltinMedia", sound: builtin }] : [];
+    cmds.push({ op: "setMusic", music });
+    if (run({ op: "batch", commands: cmds })) toast("Background music set. It gets quieter while characters talk (scene inspector → Music).");
+  }
   // Re-read after the creator closes (it may have saved one).
   const myChars = $derived.by(() => {
     void app.creator;
@@ -165,14 +240,38 @@
           <button
             class="row"
             draggable="true"
-            ondragstart={(e) => dragData(e, { kind: "text", style: t.style, sample: t.sample })}
-            onclick={() => add(newText(t.style, t.sample))}
+            ondragstart={(e) => dragData(e, { kind: "text", preset: t.id })}
+            onclick={() => add(newTextPreset(t))}
           >
-            <img alt="" src={itemThumb(`text-${t.style}`, newText(t.style, t.sample), 120, 56)} />
+            <img alt="" src={itemThumb(`text-${t.id}`, newTextPreset(t), 120, 56, 150)} />
             <span>{t.label}</span>
           </button>
         {/each}
       </div>
+    {:else if tab === "images"}
+      <p class="hint">Import your own pictures (PNG, JPG, WebP, GIF…): put them on stage, or use one as the scene background.</p>
+      <label class="primary wide file">
+        {readingImage ? "Reading image…" : "＋ Add image to the stage"}
+        <input type="file" accept="image/*" multiple onchange={(e) => onImageFile(e, false)} disabled={readingImage} />
+      </label>
+      <label class="ghost wide file">
+        Use an image as the background
+        <input type="file" accept="image/*" onchange={(e) => onImageFile(e, true)} disabled={readingImage} />
+      </label>
+      {#if pictures.length}
+        <h4>In this project</h4>
+        <div class="grid">
+          {#each pictures as m (m.id)}
+            <div class="card pic">
+              <button class="plain" onclick={() => addPicture(m.id, m.name, m.size)} title="Add {m.name} to the stage">
+                <img alt="" src={imageUrl(m)} />
+              </button>
+              <span>{m.name}</span>
+              <button class="mini" class:on={scene?.background.image === m.id} onclick={() => setPictureBackground(m.id)} title="Use as this scene's background">Background</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
     {:else if tab === "sound"}
       <p class="hint">
         Import a voice line or music. If a character is selected, it lip-syncs to the sound automatically.
@@ -185,14 +284,43 @@
         <h4>In this project</h4>
         <div class="list">
           {#each media as m}
-            <button class="row sound" onclick={() => addExisting(m.id)} title="Add to this scene at the playhead">
-              <span class="note">♪</span>
-              <span class="grow">{m.name}</span>
-              <span class="dim">{(m.durationFrames / (app.project?.fps ?? 30)).toFixed(1)}s</span>
-            </button>
+            <div class="row sound">
+              <button class="grow plain" onclick={() => addExisting(m.id)} title="Add to this scene at the playhead">
+                <span class="note">♪</span>
+                <span class="grow">{m.name}</span>
+                <span class="dim">{(m.durationFrames / (app.project?.fps ?? 30)).toFixed(1)}s</span>
+              </button>
+              {#if m.source?.kind !== "tts"}
+                <button class="mini" class:on={app.project?.music?.media === m.id} title="Use as background music for the whole movie" onclick={() => useAsMusic(m.id)}>🎵</button>
+              {/if}
+            </div>
           {/each}
         </div>
       {/if}
+      <h4>Music</h4>
+      <p class="hint">Original loops made by Frameling, free to use anywhere. They play under the whole movie and get quieter while characters talk.</p>
+      <div class="list">
+        {#each loops as s (s.id)}
+          <div class="row sound" class:current={app.project?.music?.media === `sound-${s.id}`}>
+            <button class="mini" title={previewing === s.id ? "Stop" : "Listen"} onclick={() => preview(s.id)}>{previewing === s.id ? "■" : "▶"}</button>
+            <span class="grow">{s.name}<span class="dim"> · {s.category}</span></span>
+            <button class="mini use" onclick={() => useAsMusic(`sound-${s.id}`, s.id)}>{app.project?.music?.media === `sound-${s.id}` ? "Playing" : "Use"}</button>
+          </div>
+        {/each}
+      </div>
+      <h4>Sound effects</h4>
+      <p class="hint">Click a name to add it at the playhead; ▶ listens first.</p>
+      {#each effectsByCat as [cat, list]}
+        <h5>{cat}</h5>
+        <div class="sfx">
+          {#each list as s (s.id)}
+            <div class="chip">
+              <button class="mini" title={previewing === s.id ? "Stop" : "Listen"} onclick={() => preview(s.id)}>{previewing === s.id ? "■" : "▶"}</button>
+              <button class="plain" onclick={() => addEffect(s)} title="Add at the playhead">{s.name}</button>
+            </div>
+          {/each}
+        </div>
+      {/each}
     {/if}
   </div>
 </aside>
@@ -207,7 +335,7 @@
   }
   .tabs {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     border-bottom: 1px solid var(--line);
   }
   .tabs button {
@@ -339,6 +467,63 @@
   .dim {
     color: var(--muted);
     font-size: 12px;
+  }
+  .row .plain,
+  .chip .plain {
+    background: none;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    min-width: 0;
+  }
+  .row.current {
+    border-color: var(--accent);
+  }
+  .mini {
+    padding: 2px 7px;
+    font-size: 11px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .mini.on,
+  .mini.use:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .card.pic img {
+    height: 70px;
+    object-fit: contain;
+  }
+  .card.pic .plain {
+    width: 100%;
+    justify-content: center;
+  }
+  h5 {
+    margin: 10px 0 5px;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .sfx {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px 3px 3px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12px;
+    background: var(--bg-2);
   }
   .search {
     width: 100%;

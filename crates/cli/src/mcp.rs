@@ -182,6 +182,7 @@ impl Server {
                     ItemKind::Character(c) => format!("character action={} expression={:?} voice={}", c.action, c.expression, c.voice.as_deref().unwrap_or("-")),
                     ItemKind::Prop(pr) => format!("prop {}", pr.prop),
                     ItemKind::Text(t) => format!("text {:?} {:?}", t.style, t.text),
+                    ItemKind::Image(im) => format!("image {} width={}", im.media, im.width),
                 };
                 let timing = match it.end {
                     Some(e) => format!(" {:.1}-{:.1}s", it.start as f32 / fps, e as f32 / fps),
@@ -354,6 +355,7 @@ Licence terms the user has agreed to (pass them on, and label published audio as
                     duration_frames: frames,
                     envelope,
                     source: Some(MediaSource::Tts { text: line.into(), voice: voice.clone(), speed }),
+                    size: None,
                 };
                 let start = a.get("start_seconds").and_then(Value::as_f64).map(|t| (t * fps as f64).round() as u32);
                 let clip_id = format!("line-{stamp}-{n}");
@@ -365,7 +367,7 @@ Licence terms the user has agreed to (pass them on, and label published audio as
             "script_to_video" => {
                 let script = s("script").ok_or("script is required")?;
                 let bubbles = a.get("bubbles").and_then(Value::as_bool).unwrap_or(false);
-                let (p, log) = crate::screenplay::build(script, &self.lib, &self.tts, &crate::screenplay::Options { bubbles })?;
+                let (p, log) = crate::screenplay::build(script, &self.lib, &self.tts, &crate::screenplay::Options { bubbles, ..Default::default() })?;
                 self.ed.apply(&Command::Batch { commands: vec![] }, None)?; // undo point
                 self.ed.project = p;
                 self.save()?;

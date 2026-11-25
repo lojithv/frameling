@@ -6,17 +6,24 @@
 
 pub mod anim;
 pub mod audio;
+pub mod camera;
+pub mod captions;
 pub mod command;
 pub mod demo;
 pub mod display;
 pub mod eval;
 pub mod geom;
+pub mod lipsync;
 pub mod model;
+pub mod mouths;
 pub mod pack;
 pub mod parts;
 pub mod poses;
 pub mod rig;
+pub mod script;
+pub mod sfx;
 pub mod stick;
+pub mod templates;
 pub mod text;
 
 pub use anim::{Interp, Key, Track, Tracks};

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app, eng, currentScene, selectedItem, selectedPosed, posedItem, updateItem, editItem, endGesture, run, toast, positionKeyFrames, setPositionKey, fmtTime } from "../lib/store.svelte";
-  import { newCharacter, newProp, newText, CHARACTER_PRESETS } from "../lib/defaults";
-  import type { Item, ItemHit, Scene } from "../lib/types";
+  import { newCharacter, newProp, newTextPreset, CHARACTER_PRESETS, TEXT_PRESETS } from "../lib/defaults";
+  import type { Item, ItemHit, Scene, TextKind } from "../lib/types";
   import { toImageData } from "../lib/thumbs";
 
   let wrap: HTMLDivElement;
@@ -87,9 +87,18 @@
     }
     return { ...s.camera.from, zoom: s.camera.from.zoom * viewScale };
   }
-  /** Scene (world) coords -> stage css px. */
-  function toScreen(x: number, y: number) {
-    const c = camAt(scene!, app.frame);
+  /** Pinned text ignores the scene camera: it is placed with the camera at home. */
+  function pinCam() {
+    return { x: 640, y: 360, zoom: viewScale };
+  }
+  const isPinned = (it: Item | null | undefined) => it?.kind.type === "text" && !!(it.kind as TextKind).pinned;
+  /** The camera an item is seen through. */
+  function camFor(it: Item | null | undefined) {
+    return isPinned(it) ? pinCam() : camAt(scene!, app.frame);
+  }
+  /** Scene (world) coords -> stage css px (for the selected item by default). */
+  function toScreen(x: number, y: number, it: Item | null | undefined = sel) {
+    const c = camFor(it);
     return { x: ((x - c.x) * c.zoom + project!.width / 2) * k, y: ((y - c.y) * c.zoom + project!.height / 2) * k };
   }
   /** Stage css px -> scene (world) coords. */
@@ -157,7 +166,7 @@
     const p = local(ev);
     const it = structuredClone(drag.item);
     if (drag.kind === "move") {
-      const zoom = camAt(scene!, app.frame).zoom;
+      const zoom = camFor(drag.item).zoom;
       const dx = (p.x - drag.sx) / k / zoom;
       const dy = (p.y - drag.sy) / k / zoom;
       if (drag.target === "motion" && it.motion) {
@@ -201,9 +210,18 @@
       const preset = CHARACTER_PRESETS[d.index];
       item = newCharacter(preset.look, preset.name, Math.round(w.x), Math.round(w.y));
     }
-    if (d.kind === "text") item = newText(d.style, d.sample, Math.round(w.x), Math.round(w.y));
+    if (d.kind === "text") {
+      const preset = TEXT_PRESETS.find((t) => t.id === d.preset) ?? TEXT_PRESETS[0];
+      item = newTextPreset(preset, Math.round(w.x), Math.round(w.y));
+      // Pinned text is placed in frame coordinates (as seen with the camera at home).
+      if ((item.kind as TextKind).pinned) {
+        const c = pinCam();
+        item.x = Math.round((p.x / k - project!.width / 2) / c.zoom + c.x);
+        item.y = Math.round((p.y / k - project!.height / 2) / c.zoom + c.y);
+      }
+    }
     if (d.kind === "background") {
-      run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: d.id, colors: [] } } as Scene });
+      run({ op: "updateScene", scene: { ...$state.snapshot(scene), background: { preset: d.id, colors: [], image: null } } as Scene });
       return;
     }
     if (item) {
@@ -262,7 +280,7 @@
       const p = local(e);
       if (!moved && Math.hypot(p.x - p0.x, p.y - p0.y) < 3) return;
       moved = true;
-      const zoom = camAt(scene!, app.frame).zoom;
+      const zoom = camFor(selectedItem()).zoom;
       const it = selectedItem();
       if (it) setPositionKey(it, d.f, d.wx + (p.x - p0.x) / k / zoom, d.wy + (p.y - p0.y) / k / zoom, key);
     };

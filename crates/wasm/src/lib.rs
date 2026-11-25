@@ -46,6 +46,33 @@ impl Engine {
         self.editor.load(demo::demo_project());
     }
 
+    /// Script to video, step 1: cast and lay out a screenplay. `opts_json` is
+    /// `script::Options`; returns `script::Plan` (project + lines to voice) as JSON.
+    pub fn script_plan(&self, src: &str, opts_json: &str) -> Result<String, JsError> {
+        let opts: frameling_core::script::Options = serde_json::from_str(opts_json).map_err(err)?;
+        let plan = frameling_core::script::plan(src, &self.lib, &opts).map_err(err)?;
+        serde_json::to_string(&plan).map_err(err)
+    }
+
+    /// Templates (id, name, description, best shape) as JSON.
+    pub fn templates(&self) -> String {
+        serde_json::to_string(&frameling_core::templates::catalog()).unwrap_or_default()
+    }
+
+    /// Replace the document with a template laid out for `shape` (vertical, wide, square).
+    pub fn load_template(&mut self, id: &str, shape: &str) -> Result<(), JsError> {
+        let p = frameling_core::templates::build(id, shape).ok_or_else(|| JsError::new(&format!("no template {id:?}")))?;
+        self.editor.load(p);
+        Ok(())
+    }
+
+    /// A template's first scene, a little way in, as RGBA pixels (the picker's thumbnails).
+    pub fn template_thumb(&self, id: &str, shape: &str, width: u32, height: u32) -> Vec<u8> {
+        let Some(p) = frameling_core::templates::build_with(id, shape, false) else { return vec![] };
+        let f = (p.fps * 2).min(p.scenes.first().map_or(1, |s| s.duration.saturating_sub(1)));
+        frameling_render::render(&frameling_core::evaluate(&p, &self.lib, f), width, height)
+    }
+
     pub fn load_blank(&mut self) {
         self.editor.load(demo::blank_project());
     }
@@ -106,6 +133,16 @@ impl Engine {
         self.editor.dirty = false;
     }
 
+    /// Built-in sound effects and music loops (id, name, kind, category, secs) as JSON.
+    pub fn sound_catalog(&self) -> String {
+        serde_json::to_string(&frameling_core::sfx::catalog()).unwrap_or_default()
+    }
+
+    /// A built-in sound as WAV bytes (previews).
+    pub fn sound_wav(&self, id: &str) -> Option<Vec<u8>> {
+        frameling_core::sfx::render(id)
+    }
+
     /// Library catalogue (props, backgrounds, actions, packs) as JSON.
     pub fn catalog(&self) -> String {
         self.lib.catalog().to_string()
@@ -155,6 +192,22 @@ impl Engine {
     /// Render a global frame (playback and export), with transitions.
     pub fn render_frame(&self, frame: u32, width: u32, height: u32) -> Vec<u8> {
         frameling_render::render(&evaluate(&self.editor.project, &self.lib, frame), width, height)
+    }
+
+    /// The movie's auto subtitles as an SRT file.
+    pub fn captions_srt(&self) -> String {
+        frameling_core::captions::srt(&self.editor.project)
+    }
+
+    /// Caption settings suited to a frame size, as JSON (export presets).
+    pub fn caption_defaults_for(&self, width: u32, height: u32) -> String {
+        serde_json::to_string(&frameling_core::captions::defaults_for(width, height)).unwrap_or_default()
+    }
+
+    /// Caption settings suited to the project's frame shape, as JSON.
+    pub fn caption_defaults(&self) -> String {
+        let p = &self.editor.project;
+        serde_json::to_string(&frameling_core::captions::defaults_for(p.width, p.height)).unwrap_or_default()
     }
 
     /// Audio placements for playback/export, as JSON.
@@ -252,6 +305,7 @@ impl Engine {
             ItemKind::Character(_) => "character".into(),
             ItemKind::Prop(_) => "prop".into(),
             ItemKind::Text(_) => "text".into(),
+            ItemKind::Image(_) => "image".into(),
         })
     }
 }

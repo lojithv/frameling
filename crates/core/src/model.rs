@@ -37,6 +37,38 @@ pub struct Project {
     /// Animations made in this project (for example chained from poses).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub actions: BTreeMap<Id, crate::pack::ActionDef>,
+    /// Auto subtitles from the voice lines.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub captions: Captions,
+    /// Background music for the whole movie, quieter under voices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music: Option<Music>,
+}
+
+/// A music track that plays across every scene (global timeline), fading in
+/// and out and ducking (getting quieter) while anyone speaks.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Music {
+    pub media: Id,
+    pub volume: f32,
+    /// Volume multiplier while a voice line plays (1 = no ducking).
+    pub duck: f32,
+    /// Fade in / out lengths in frames.
+    pub fade_in: u32,
+    pub fade_out: u32,
+    /// Repeat the music to fill the movie.
+    pub looped: bool,
+    /// Global frame the music starts at.
+    pub start: u32,
+    /// Frames to skip at the beginning of the media.
+    pub trim_start: u32,
+}
+
+impl Default for Music {
+    fn default() -> Self {
+        Music { media: String::new(), volume: 0.5, duck: 0.3, fade_in: 15, fade_out: 45, looped: true, start: 0, trim_start: 0 }
+    }
 }
 
 impl Default for Project {
@@ -53,6 +85,8 @@ impl Default for Project {
             parts: BTreeMap::new(),
             poses: BTreeMap::new(),
             actions: BTreeMap::new(),
+            captions: Captions::default(),
+            music: None,
         }
     }
 }
@@ -175,11 +209,14 @@ pub struct Background {
     pub preset: String,
     /// Overrides for the preset's colour slots (`$0`, `$1`, ...).
     pub colors: Vec<Color>,
+    /// An imported picture (media id) that fills the world instead of the preset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<Id>,
 }
 
 impl Default for Background {
     fn default() -> Self {
-        Background { preset: "office".into(), colors: vec![] }
+        Background { preset: "office".into(), colors: vec![], image: None }
     }
 }
 
@@ -242,6 +279,13 @@ pub enum Effect {
     SlideLeft,
     SlideRight,
     SlideUp,
+    SlideDown,
+    /// Drops in from above and bounces (leaving: hops up and away).
+    Bounce,
+    /// Shrinks in from big (leaving: grows and fades).
+    Zoom,
+    /// Spins and grows in (leaving: spins away).
+    Spin,
 }
 
 /// Move from the item's position to (`x`, `y`) between local frames `start` and `end`.
@@ -319,6 +363,26 @@ pub enum ItemKind {
     Character(CharacterItem),
     Prop(PropItem),
     Text(TextItem),
+    Image(ImageItem),
+}
+
+/// An imported picture on stage, anchored at its centre.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ImageItem {
+    /// Media id of the picture (PNG).
+    pub media: Id,
+    /// Width in scene px at scale 1 (the height follows the picture).
+    pub width: f32,
+    /// Rounded corners, scene px.
+    #[serde(skip_serializing_if = "is_default")]
+    pub radius: f32,
+}
+
+impl Default for ImageItem {
+    fn default() -> Self {
+        ImageItem { media: String::new(), width: 400.0, radius: 0.0 }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -350,6 +414,9 @@ pub struct CharacterItem {
     /// Turn to face the way it walks (side views; front or back when walking
     /// toward or away from the camera).
     pub auto_turn: bool,
+    /// How the mouth follows voice lines (shapes, simple open/close, off).
+    #[serde(skip_serializing_if = "is_default")]
+    pub lip_sync: crate::lipsync::LipSync,
 }
 
 /// The eight turnaround views. Right/left mean facing screen right/left.
@@ -411,6 +478,7 @@ impl Default for CharacterItem {
             poses: Vec::new(),
             view: View::Front,
             auto_turn: true,
+            lip_sync: crate::lipsync::LipSync::Shapes,
         }
     }
 }
@@ -445,6 +513,20 @@ pub struct Look {
     /// in order on top of the figure at their part's anchor.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub wear: Vec<Wear>,
+    /// Which set of mouth shapes lip sync draws (cartoon figures).
+    #[serde(skip_serializing_if = "is_default")]
+    pub mouth: MouthSet,
+}
+
+/// A set of lip-sync mouth shapes. Every set draws all nine shapes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum MouthSet {
+    /// A dark open mouth with teeth and tongue.
+    #[default]
+    Classic,
+    /// Full coloured lips around the opening.
+    Lips,
 }
 
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
@@ -574,6 +656,7 @@ impl Default for Look {
             nose: NoseStyle::Button,
             facial_hair: FacialHair::None,
             wear: Vec::new(),
+            mouth: MouthSet::Classic,
         }
     }
 }
@@ -691,8 +774,36 @@ pub struct TextItem {
     pub tail: Tail,
     /// Wrap width in scene pixels.
     pub width: f32,
-    /// Typewriter reveal (characters per second, 0 = off).
+    /// Typewriter reveal (characters per second, 0 = off). Older files only;
+    /// new text uses `reveal` = typewriter with `reveal_speed`.
     pub typewriter: f32,
+    /// Typeface.
+    #[serde(skip_serializing_if = "is_default")]
+    pub font: Font,
+    /// Outline around the letters (`stroke_width` = 0: none).
+    #[serde(skip_serializing_if = "is_default")]
+    pub stroke: Color,
+    /// Outline thickness in scene px (what shows outside the letter).
+    #[serde(skip_serializing_if = "is_default")]
+    pub stroke_width: f32,
+    /// Show the text in capitals.
+    #[serde(skip_serializing_if = "is_default")]
+    pub uppercase: bool,
+    /// How the letters or words come in (after the item's enter effect).
+    #[serde(skip_serializing_if = "is_default")]
+    pub reveal: Reveal,
+    /// How they leave before the item's end (needs an end time).
+    #[serde(skip_serializing_if = "is_default")]
+    pub reveal_out: Reveal,
+    /// Letters (or words, for word reveals) per second.
+    pub reveal_speed: f32,
+    /// A looping motion while the text is on screen.
+    #[serde(skip_serializing_if = "is_default")]
+    pub emphasis: Emphasis,
+    /// Pinned to the frame: ignores the scene camera and is drawn on top, so
+    /// titles stay put while the camera pans or zooms.
+    #[serde(skip_serializing_if = "is_default")]
+    pub pinned: bool,
 }
 
 impl Default for TextItem {
@@ -706,8 +817,135 @@ impl Default for TextItem {
             tail: Tail::BottomLeft,
             width: 320.0,
             typewriter: 0.0,
+            font: Font::Sans,
+            stroke: Color::default(),
+            stroke_width: 0.0,
+            uppercase: false,
+            reveal: Reveal::None,
+            reveal_out: Reveal::None,
+            reveal_speed: 20.0,
+            emphasis: Emphasis::None,
+            pinned: false,
         }
     }
+}
+
+/// Typefaces built into the app (see `assets/fonts/README.md`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum Font {
+    #[default]
+    Sans,
+    Heavy,
+    Rounded,
+    Mono,
+    Serif,
+}
+
+/// Letter-by-letter or word-by-word animation of a text's arrival (or, in
+/// reverse, its departure).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum Reveal {
+    #[default]
+    None,
+    /// Letters appear one at a time with a blinking cursor (leaving: deleted from the end).
+    Typewriter,
+    /// Each letter pops in with a little overshoot.
+    PopLetters,
+    /// Each word pops in.
+    PopWords,
+    /// Words slide up and fade in.
+    RiseWords,
+    /// Letters drop in from above and bounce.
+    Bounce,
+    /// Letters fade in.
+    Fade,
+}
+
+impl Reveal {
+    /// Animates whole words rather than single letters.
+    pub fn by_word(self) -> bool {
+        matches!(self, Reveal::PopWords | Reveal::RiseWords)
+    }
+}
+
+/// A looping motion that draws the eye to a text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum Emphasis {
+    #[default]
+    None,
+    /// Letters bob up and down in a wave.
+    Wave,
+    /// The whole text gently grows and shrinks.
+    Pulse,
+    /// A quick jitter.
+    Shake,
+}
+
+/// Auto subtitles: captions made from the project's voice lines, timed word
+/// by word to the audio, drawn on top of every scene.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Captions {
+    pub enabled: bool,
+    pub style: CaptionStyle,
+    pub font: Font,
+    /// Letter size at a 720 px short side (scaled with the frame).
+    pub size: f32,
+    pub color: Color,
+    /// The word being spoken.
+    pub highlight: Color,
+    pub stroke: Color,
+    /// Outline thickness at a 720 px short side (0 = none).
+    pub stroke_width: f32,
+    /// Panel colour for the boxed style.
+    pub box_color: Color,
+    /// Vertical position of the caption's centre, 0 = top, 1 = bottom.
+    pub y: f32,
+    /// Most words shown at once.
+    pub words: u32,
+    pub uppercase: bool,
+    /// Each new group of words pops in.
+    pub pop: bool,
+}
+
+impl Default for Captions {
+    fn default() -> Self {
+        Captions {
+            enabled: false,
+            style: CaptionStyle::Pop,
+            font: Font::Heavy,
+            size: 46.0,
+            color: Color::WHITE,
+            highlight: Color::rgb(0xff, 0xd2, 0x3f),
+            stroke: Color::rgb(0x10, 0x10, 0x14),
+            stroke_width: 4.0,
+            box_color: Color::rgba(0x10, 0x12, 0x1c, 0xc8),
+            y: 0.78,
+            words: 3,
+            uppercase: true,
+            pop: true,
+        }
+    }
+}
+
+/// How auto subtitles look and highlight the spoken word.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum CaptionStyle {
+    /// Outlined letters; the spoken word changes colour and pops.
+    #[default]
+    Pop,
+    /// On a dark panel; the spoken word changes colour.
+    Boxed,
+    /// The spoken word sits on a coloured pill.
+    Pill,
+    /// Words fill with colour as they are spoken.
+    Karaoke,
+    /// Plain outlined text with a soft shadow, no highlight.
+    Clean,
 }
 
 /// A sound placed in a scene. If `speaker` names a character, that character
@@ -725,11 +963,30 @@ pub struct AudioClip {
     pub trim_start: u32,
     /// Max frames to play (`None` = to the end of the media).
     pub length: Option<u32>,
+    /// Subtitle text for this clip. `None` = the typed line of a voice line
+    /// (nothing for other sounds); `Some("")` = no subtitle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub caption: Option<String>,
 }
 
 impl Default for AudioClip {
     fn default() -> Self {
-        AudioClip { id: String::new(), media: String::new(), start: 0, volume: 1.0, speaker: None, trim_start: 0, length: None }
+        AudioClip { id: String::new(), media: String::new(), start: 0, volume: 1.0, speaker: None, trim_start: 0, length: None, caption: None }
+    }
+}
+
+impl AudioClip {
+    /// The words this clip's subtitle shows, if any.
+    pub fn caption_text<'a>(&'a self, media: &'a Media) -> Option<&'a str> {
+        let t = match &self.caption {
+            Some(t) => t.as_str(),
+            None => match &media.source {
+                Some(MediaSource::Tts { text, .. }) => text.as_str(),
+                _ => return None,
+            },
+        };
+        let t = t.trim();
+        (!t.is_empty()).then_some(t)
     }
 }
 
@@ -758,6 +1015,22 @@ pub struct Media {
     pub envelope: Vec<f32>,
     /// Where the sound came from (lets the editor re-generate a typed line).
     pub source: Option<MediaSource>,
+    /// Pixel size of a picture (`[width, height]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<[u32; 2]>,
+}
+
+impl Media {
+    pub fn is_image(&self) -> bool {
+        self.mime.starts_with("image/")
+    }
+    /// Height over width of a picture (1 when unknown).
+    pub fn aspect(&self) -> f32 {
+        match self.size {
+            Some([w, h]) if w > 0 && h > 0 => h as f32 / w as f32,
+            _ => 1.0,
+        }
+    }
 }
 
 /// Origin of a sound.
@@ -774,6 +1047,6 @@ pub enum MediaSource {
 
 impl Default for Media {
     fn default() -> Self {
-        Media { id: String::new(), name: String::new(), mime: String::new(), data: String::new(), duration_frames: 0, envelope: vec![], source: None }
+        Media { id: String::new(), name: String::new(), mime: String::new(), data: String::new(), duration_frames: 0, envelope: vec![], source: None, size: None }
     }
 }

@@ -2,7 +2,30 @@
 
 export type Id = string;
 export type Ease = "linear" | "inOut" | "in" | "out" | "back";
-export type Effect = "none" | "fade" | "pop" | "slideLeft" | "slideRight" | "slideUp";
+export type Effect = "none" | "fade" | "pop" | "slideLeft" | "slideRight" | "slideUp" | "slideDown" | "bounce" | "zoom" | "spin";
+export type Font = "sans" | "heavy" | "rounded" | "mono" | "serif";
+export type Reveal = "none" | "typewriter" | "popLetters" | "popWords" | "riseWords" | "bounce" | "fade";
+export type Emphasis = "none" | "wave" | "pulse" | "shake";
+export type CaptionStyle = "pop" | "boxed" | "pill" | "karaoke" | "clean";
+
+/** Auto subtitles made from the voice lines (crates/core/src/captions.rs). */
+export interface Captions {
+  enabled: boolean;
+  style: CaptionStyle;
+  font: Font;
+  /** Letter size at a 720 px short side. */
+  size: number;
+  color: string;
+  highlight: string;
+  stroke: string;
+  strokeWidth: number;
+  boxColor: string;
+  /** Caption centre, 0 = top, 1 = bottom. */
+  y: number;
+  words: number;
+  uppercase: boolean;
+  pop: boolean;
+}
 export type TransitionKind = "cut" | "fade" | "fadeBlack" | "slide" | "zoom";
 export type HairStyle = "bald" | "short" | "spiky" | "long" | "bun" | "curly";
 export type Build = "slim" | "regular" | "broad";
@@ -27,13 +50,36 @@ export interface Project {
   poses?: Record<Id, { id: string; name: string; category: string; tags: string[]; pose: Record<string, number> }>;
   /** Animations made in this project (chained from poses). */
   actions?: Record<Id, { id: string; name: string; duration: number; loop: boolean; keys: unknown[] }>;
+  /** Auto subtitles (absent = defaults, off). */
+  captions?: Captions;
+  /** Background music across the whole movie. */
+  music?: Music | null;
 }
+
+/** Background music (crates/core/src/model.rs `Music`). */
+export interface Music {
+  media: Id;
+  volume: number;
+  /** Volume multiplier while voices play (1 = no ducking). */
+  duck: number;
+  fadeIn: number;
+  fadeOut: number;
+  looped: boolean;
+  /** Global frame it starts at. */
+  start: number;
+  trimStart: number;
+}
+
+export type CameraMove = "punch" | "shake" | "pushIn" | "pullOut" | "panTo" | "cutTo" | "whipTo" | "reset";
+
+/** A built-in sound effect or music loop (crates/core/src/sfx.rs). */
+export interface SoundInfo { id: string; name: string; kind: "effect" | "music"; category: string; secs: number; looped: boolean }
 
 export interface Scene {
   id: Id;
   name: string;
   duration: number;
-  background: { preset: string; colors: string[] };
+  background: { preset: string; colors: string[]; image?: Id | null };
   camera: Camera;
   transition: { kind: TransitionKind; duration: number };
   items: Item[];
@@ -80,6 +126,8 @@ export interface Look {
   facialHair?: "none" | "stubble" | "moustache" | "goatee" | "beard" | "fullBeard";
   /** Wearable parts from part packs, with their colour overrides. */
   wear?: { part: string; colors?: string[] }[];
+  /** Lip-sync mouth set (cartoon figures; absent = classic). */
+  mouth?: MouthSet;
 }
 
 /** One entry of the character parts catalogue. */
@@ -115,7 +163,14 @@ export interface CharacterKind {
   view?: View;
   /** Face the way it walks. */
   autoTurn?: boolean;
+  /** How the mouth follows voice lines (absent = shapes). */
+  lipSync?: LipSync;
 }
+
+/** Lip-sync mouth shapes (crates/core/src/lipsync.rs). */
+export type Viseme = "rest" | "mbp" | "ee" | "eh" | "ai" | "o" | "u" | "fv" | "l";
+export type LipSync = "shapes" | "simple" | "off";
+export type MouthSet = "classic" | "lips";
 
 export type View = "front" | "frontRight" | "right" | "backRight" | "back" | "backLeft" | "left" | "frontLeft";
 
@@ -142,8 +197,28 @@ export interface TextKind {
   tail: Tail;
   width: number;
   typewriter: number;
+  font?: Font;
+  stroke?: string;
+  /** Outline thickness, stage px (0 = none). */
+  strokeWidth?: number;
+  uppercase?: boolean;
+  reveal?: Reveal;
+  revealOut?: Reveal;
+  /** Letters (or words) per second. */
+  revealSpeed?: number;
+  emphasis?: Emphasis;
+  /** Ignores the camera and draws on top. */
+  pinned?: boolean;
 }
-export type ItemKind = CharacterKind | PropKind | TextKind;
+/** An imported picture on stage, anchored at its centre. */
+export interface ImageKind {
+  type: "image";
+  media: Id;
+  /** Width in scene px at scale 1. */
+  width: number;
+  radius?: number;
+}
+export type ItemKind = CharacterKind | PropKind | TextKind | ImageKind;
 
 export interface Item {
   id: Id;
@@ -173,6 +248,8 @@ export interface AudioClip {
   speaker: Id | null;
   trimStart: number;
   length: number | null;
+  /** Subtitle text: absent = the typed line, "" = no subtitle. */
+  caption?: string | null;
 }
 
 export interface Media {
@@ -183,6 +260,8 @@ export interface Media {
   durationFrames: number;
   envelope: number[];
   source: MediaSource | null;
+  /** Pixel size of a picture. */
+  size?: [number, number] | null;
 }
 
 export type MediaSource =
@@ -195,7 +274,20 @@ export interface Voice { id: string; name: string; language: string; engine: "su
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface ItemHit { id: Id; bounds: Rect; visible: boolean }
 
-export interface AudioEvent { media: Id; at: number; trim: number; frames: number; volume: number }
+export interface AudioEvent {
+  media: Id;
+  at: number;
+  trim: number;
+  frames: number;
+  volume: number;
+  looped?: boolean;
+  fadeIn?: number;
+  fadeOut?: number;
+  /** Global frame spans where voices play; the gain ducks to duckLevel there. */
+  ducks?: [number, number][];
+  duckLevel?: number;
+  duckRamp?: number;
+}
 
 export interface CatalogEntry { id: string; name: string; category: string; colors: string[]; pack: string }
 export interface Catalog {
@@ -231,4 +323,9 @@ export type Command =
   | { op: "deleteKeys"; scene: Id; item?: Id | null; path?: string | null; frames?: number[] | null; from?: number | null; to?: number | null }
   | { op: "setInterpolation"; scene: Id; item?: Id | null; path: string; frames?: number[] | null; interp: Interp }
   | { op: "defineOutfit"; scene: Id; item: Id; name: string; outfit: LookPatch | null }
+  | { op: "setCaptions"; captions: Captions }
+  | { op: "setMusic"; music: Music | null }
+  | { op: "cameraMove"; scene: Id; move: CameraMove; frame: number; duration?: number; target?: Id | null; strength?: number }
+  | { op: "autoCamera"; scene: Id; style: "cuts" | "punches"; strength?: number }
+  | { op: "addBuiltinMedia"; sound: string }
   | { op: "batch"; commands: Command[] };

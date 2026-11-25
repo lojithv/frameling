@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 frameling-core.workspace = true
 tiny-skia.workspace = true
+base64.workspace = true

@@ -2,6 +2,7 @@
 // browser. Desktop uses native dialogs, native files and the native (FFmpeg)
 // exporter; the web build uses downloads and the WebCodecs exporter.
 
+import { toImageData } from "./thumbs";
 import { app, eng, loadProject, toast, rememberRecent, forgetRecent } from "./store.svelte";
 import { exportInBrowser } from "./webexport";
 
@@ -90,10 +91,73 @@ export async function saveProject(saveAs = false) {
   toast("Project saved");
 }
 
+/** Save the auto subtitles as an .srt file (for uploading next to the video). */
+export async function saveSubtitles() {
+  const srt = eng().captions_srt();
+  if (!srt.trim()) {
+    toast("No subtitles yet: add a voice line (or type a caption on a sound) first.", "error");
+    return;
+  }
+  if (isDesktop) {
+    const { invoke, dialog } = await tauri();
+    const path = await dialog.save({ filters: [{ name: "Subtitles", extensions: ["srt"] }], defaultPath: `${safeName()}.srt` });
+    if (!path) return;
+    await invoke("write_text_file", { path, contents: srt });
+  } else {
+    download(new Blob([srt], { type: "text/plain" }), `${safeName()}.srt`);
+  }
+  toast("Subtitles saved");
+}
+
 export interface ExportSettings {
   width: number;
   height: number;
   format: "mp4" | "webm";
+  /** Frame shape to export in, if not the project's own (the world is re-framed, like a crop). */
+  frame?: { width: number; height: number };
+  /** Burn subtitles into the picture (undefined = as the project has them). */
+  captions?: boolean;
+  /** Also save a PNG thumbnail of this global frame. */
+  thumbnail?: number | null;
+  /** Also save the subtitles as .srt. */
+  srt?: boolean;
+  quality?: "draft" | "high";
+}
+
+/** The project as it should be exported: frame shape and subtitles from the settings. */
+function exportProject(s: ExportSettings): string {
+  const e = eng();
+  const p = JSON.parse(e.project_json());
+  if (s.frame && (s.frame.width !== p.width || s.frame.height !== p.height)) {
+    p.width = s.frame.width;
+    p.height = s.frame.height;
+    if (p.captions) {
+      // Keep the look, move to the new shape's default place and size.
+      const d = JSON.parse(e.caption_defaults_for(s.frame.width, s.frame.height));
+      p.captions = { ...p.captions, y: d.y, size: d.size };
+    }
+  }
+  if (s.captions !== undefined) {
+    const base = p.captions ?? JSON.parse(e.caption_defaults_for(p.width, p.height));
+    p.captions = { ...base, enabled: s.captions };
+  }
+  return JSON.stringify(p);
+}
+
+/** A PNG of one global frame of an engine's project. */
+function thumbnailPng(engine: import("../engine/frameling.js").Engine, frame: number, w: number, h: number): Promise<Blob> {
+  const c = new OffscreenCanvas(w, h);
+  const px = engine.render_frame(Math.max(0, Math.min(engine.total_frames() - 1, frame)), w, h);
+  const data = toImageData(px, w, h);
+  c.getContext("2d")!.putImageData(data, 0, 0);
+  return c.convertToBlob({ type: "image/png" });
+}
+
+async function blobB64(b: Blob): Promise<string> {
+  const bytes = new Uint8Array(await b.arrayBuffer());
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 
 let cancelRequested = false;
@@ -105,6 +169,12 @@ export function cancelExport() {
 export async function exportVideo(s: ExportSettings) {
   cancelRequested = false;
   const total = eng().total_frames();
+  const json = exportProject(s);
+  // A second engine holding the export version (the editor's stays untouched).
+  const { Engine } = await import("../engine/frameling.js");
+  const ex = new Engine();
+  ex.load(json);
+  const srt = s.srt ? ex.captions_srt() : "";
   if (isDesktop) {
     const { invoke, dialog, event } = await tauri();
     const path = await dialog.save({
@@ -117,8 +187,19 @@ export async function exportVideo(s: ExportSettings) {
       app.exporting = { done: e.payload[0], total: e.payload[1], label: "Rendering" };
     });
     try {
-      await invoke("export_video", { project: eng().project_json(), path, width: s.width, height: s.height });
-      toast(`Exported ${path}`);
+      await invoke("export_video", { project: json, path, width: s.width, height: s.height, crf: s.quality === "draft" ? 28 : 20 });
+      const base = path.replace(/\.[a-z0-9]+$/i, "");
+      const extras: string[] = [];
+      if (s.thumbnail != null) {
+        await invoke("write_base64_file", { path: `${base}.png`, data: await blobB64(await thumbnailPng(ex, s.thumbnail, s.width, s.height)) });
+        extras.push("thumbnail");
+      }
+      if (srt.trim()) {
+        await invoke("write_text_file", { path: `${base}.srt`, contents: srt });
+        extras.push("subtitles");
+      }
+      toast(`Exported ${path}${extras.length ? ` (+ ${extras.join(" and ")})` : ""}`);
+      ex.free();
     } catch (e) {
       toast(String(e), cancelRequested ? "info" : "error");
     } finally {
@@ -132,9 +213,11 @@ export async function exportVideo(s: ExportSettings) {
     const blob = await exportInBrowser(s, (done, label) => {
       app.exporting = { done, total, label };
       return !cancelRequested;
-    });
+    }, ex);
     if (blob) {
       download(blob, `${safeName()}.${blob.type.includes("webm") ? "webm" : "mp4"}`);
+      if (s.thumbnail != null) download(await thumbnailPng(ex, s.thumbnail, s.width, s.height), `${safeName()}.png`);
+      if (srt.trim()) download(new Blob([srt], { type: "text/plain" }), `${safeName()}.srt`);
       toast("Video exported");
     } else {
       toast("Export cancelled");

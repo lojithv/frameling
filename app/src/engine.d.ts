@@ -26,6 +26,8 @@ declare module "*/engine/frameling.js" {
     camera_at(scene: number, local: number): Float32Array;
     render_frame(frame: number, width: number, height: number): Uint8Array;
     audio_events(): string;
+    captions_srt(): string;
+    caption_defaults(): string;
     render_item_preview(itemJson: string, width: number, height: number, frame: number): Uint8Array;
     render_background_preview(id: string, width: number, height: number): Uint8Array;
     item_kind(scene: number, id: string): string | undefined;

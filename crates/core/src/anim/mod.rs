@@ -16,7 +16,7 @@ pub use autokey::{autokey_item, posed_item, AUTO_CHANNELS};
 pub use path::{all_paths, Bone, Channel, LookField, Scope, ValueKind};
 pub use track::{Interp, Key, Track};
 
-use crate::model::{CamKey, CharacterItem, Expression, Item, Look, LookPatch, Scene};
+use crate::model::{CamKey, CharacterItem, Expression, Item, Look, LookPatch, Scene, TextItem};
 use crate::rig::Pose;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -201,6 +201,30 @@ pub fn resolve_look<'a>(c: &'a CharacterItem, tracks: &Tracks, frame: u32) -> Co
     Cow::Owned(look)
 }
 
+/// A text item's colours and outline at a frame, keyed values on top.
+pub fn resolve_text<'a>(t: &'a TextItem, tracks: &Tracks, frame: u32) -> Cow<'a, TextItem> {
+    let f = frame as f32;
+    let keyed = [Channel::TextColor, Channel::TextFill, Channel::TextStroke, Channel::TextStrokeWidth].iter().any(|c| tracks.contains_key(c.path()));
+    if !keyed {
+        return Cow::Borrowed(t);
+    }
+    let mut out = t.clone();
+    let col = |c: Channel| tracks.get(c.path()).and_then(|tr| tr.color(f));
+    if let Some(c) = col(Channel::TextColor) {
+        out.color = c;
+    }
+    if let Some(c) = col(Channel::TextFill) {
+        out.fill = c;
+    }
+    if let Some(c) = col(Channel::TextStroke) {
+        out.stroke = c;
+    }
+    if let Some(w) = number(tracks, Channel::TextStrokeWidth, f) {
+        out.stroke_width = w.max(0.0);
+    }
+    Cow::Owned(out)
+}
+
 /// The keyed expression, or the item's own.
 pub fn expression(c: &CharacterItem, tracks: &Tracks, frame: u32) -> Expression {
     tracks
@@ -210,6 +234,11 @@ pub fn expression(c: &CharacterItem, tracks: &Tracks, frame: u32) -> Expression 
         .unwrap_or(c.expression)
 }
 
+/// A mouth shape keyed by hand at this frame (`None`: no key, or "auto").
+pub fn mouth(tracks: &Tracks, frame: u32) -> Option<crate::lipsync::Viseme> {
+    tracks.get(Channel::Mouth.path()).and_then(|t| t.step(frame as f32)).and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
 /// The keyed view (turnaround), or the character's own.
 pub fn view(c: &CharacterItem, tracks: &Tracks, frame: u32) -> crate::model::View {
     tracks
@@ -217,6 +246,11 @@ pub fn view(c: &CharacterItem, tracks: &Tracks, frame: u32) -> crate::model::Vie
         .and_then(|t| t.step(frame as f32))
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or(c.view)
+}
+
+/// Keyed camera shake strength (0 when none).
+pub fn camera_shake(scene: &Scene, frame: u32) -> f32 {
+    number(&scene.tracks, Channel::CameraShake, frame as f32).unwrap_or(0.0).max(0.0)
 }
 
 /// Camera tracks override the scene's from/to move channel by channel.

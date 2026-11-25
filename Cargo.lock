@@ -265,6 +265,7 @@ dependencies = [
 name = "frameling-render"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "frameling-core",
  "tiny-skia",
 ]

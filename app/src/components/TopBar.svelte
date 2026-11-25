@@ -3,7 +3,7 @@
   import { openProject, openPath, saveProject, isDesktop } from "../lib/platform";
   import { play, stop } from "../lib/playback";
 
-  let { onExport }: { onExport: () => void } = $props();
+  let { onExport, onTemplates, onScript }: { onExport: () => void; onTemplates: () => void; onScript: () => void } = $props();
   let menu = $state(false);
 
   function newProject(demo: boolean) {
@@ -52,6 +52,8 @@
       {#if menu}
         <div class="menu" role="menu">
           <button onclick={() => newProject(false)}>New blank project</button>
+          <button onclick={() => { menu = false; onTemplates(); }}>New from template…</button>
+          <button onclick={() => { menu = false; onScript(); }}>New from a script…</button>
           <button onclick={() => newProject(true)}>New from demo</button>
           <hr />
           <button onclick={() => { menu = false; openProject(); }}>Open… <kbd>Ctrl O</kbd></button>
@@ -88,6 +90,7 @@
   </div>
 
   <div class="play">
+    <button class="pill" onclick={onScript} title="Paste a dialogue script and get a voiced, animated video">✍ Script to video</button>
     <button class="pill" onclick={() => (app.playing && app.playMode === "all" ? stop() : play("all"))}>
       {app.playing && app.playMode === "all" ? "❚❚ Stop" : "▶ Play movie"}
     </button>

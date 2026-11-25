@@ -22,18 +22,29 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| format!("{path}: {e}"))
 }
 
+/// Write a file given as base64 (thumbnails).
+#[tauri::command]
+fn write_base64_file(path: String, data: String) -> Result<(), String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| format!("{path}: {e}"))
+}
+
 #[tauri::command]
 fn cancel_export() {
     CANCEL.store(true, Ordering::SeqCst);
 }
 
 #[tauri::command]
-async fn export_video(app: tauri::AppHandle, project: String, path: String, width: u32, height: u32) -> Result<(), String> {
+async fn export_video(app: tauri::AppHandle, project: String, path: String, width: u32, height: u32, crf: Option<u8>) -> Result<(), String> {
     let project = Project::from_json(&project)?;
     CANCEL.store(false, Ordering::SeqCst);
     let mut opts = ExportOptions::for_project(&project);
     opts.width = width;
     opts.height = height;
+    if let Some(c) = crf {
+        opts.crf = c.min(51);
+    }
     // Prefer an FFmpeg bundled in the app's resources, if present.
     if let Ok(res) = app.path().resource_dir() {
         let bundled = res.join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
@@ -160,6 +171,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_text_file,
             write_text_file,
+            write_base64_file,
             export_video,
             cancel_export,
             tts_voices,
