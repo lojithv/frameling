@@ -97,7 +97,7 @@ pub fn draw_stick(look: &Look, pose: &Pose, face: &Face, wear: &[Worn], th: f32)
 
     // Far arm behind the body.
     let mut hands = Vec::new();
-    let mut arm = |upper: &mut Vec<Op>, side: f32, hands: &mut Vec<(f32, f32, f32)>| {
+    let arm = |upper: &mut Vec<Op>, side: f32, hands: &mut Vec<(f32, f32, f32)>| {
         let (s, e) = if side < 0.0 { (pose.ls, pose.le) } else { (pose.rs, pose.re) };
         let start = (side * 2.0 * c, SHOULDER_Y);
         let (elbow, hand) = bone(start, s, e, 44.0, 42.0, limb_u(side, th, pose.sagittal));

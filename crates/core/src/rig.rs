@@ -273,7 +273,7 @@ fn draw_cartoon(look: &Look, pose: &Pose, face: &Face, wear: &[Worn], th: f32) -
     let sh_y = top_y + 16.0;
     let sh_x = (half - 9.0) * c;
     let mut hands = Vec::new();
-    let mut arm = |out: &mut Vec<Op>, side: f32, hands: &mut Vec<(f32, f32, f32)>| {
+    let arm = |out: &mut Vec<Op>, side: f32, hands: &mut Vec<(f32, f32, f32)>| {
         let (s, e) = if side < 0.0 { (pose.ls, pose.le) } else { (pose.rs, pose.re) };
         let u = limb_u(side, th, pose.sagittal);
         let hand = limb(out, (side * sh_x, sh_y), s, e, 42.0, 40.0, u, look.top, look.skin, 21.0);
