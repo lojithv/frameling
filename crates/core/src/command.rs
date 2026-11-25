@@ -119,6 +119,9 @@ pub enum Command {
     SetMusic { music: Option<Music> },
     /// Several commands applied as one undo step.
     Batch { commands: Vec<Command> },
+    /// Swap in a whole new project as one undoable step (script to video,
+    /// templates), unlike opening a file, which starts a fresh history.
+    ReplaceProject { project: Box<Project> },
 }
 
 /// The track map a key command targets, plus the item kind (None = scene).
@@ -461,6 +464,12 @@ impl Command {
                 for c in commands {
                     c.apply(p)?;
                 }
+            }
+            Command::ReplaceProject { project } => {
+                if project.scenes.is_empty() {
+                    return Err("a project needs at least one scene".into());
+                }
+                *p = (**project).clone();
             }
         }
         Ok(())

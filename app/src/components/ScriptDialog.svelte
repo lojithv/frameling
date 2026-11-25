@@ -3,7 +3,7 @@
   // subtitles, music and an edited camera. The engine plans the project
   // (crates/core/src/script.rs); this dialog voices each line with the
   // built-in text-to-speech and places it.
-  import { app, eng, loadProject, run, toast } from "../lib/store.svelte";
+  import { app, eng, endGesture, run, toast } from "../lib/store.svelte";
   import { listVoices, synthBytes, ttsAvailable, termsAccepted, acceptTerms, voiceTerms } from "../lib/voice";
   import { mediaFromBytes } from "../lib/audio";
   import type { Command, Project, SoundInfo } from "../lib/types";
@@ -44,7 +44,6 @@ Maya (happy, cheer): You are the best!`;
   }
 
   async function generate() {
-    if (app.dirty && !confirm("Discard unsaved changes in the current project?")) return;
     let voices = await castVoices().catch(() => []);
     if (voices.some((v) => v.startsWith("supertonic:")) && !termsAccepted()) {
       if (terms === null) {
@@ -62,7 +61,15 @@ Maya (happy, cheer): You are the best!`;
       toast(String((e as Error).message ?? e), "error");
       return;
     }
-    if (!loadProject(JSON.stringify(plan.project), null)) return;
+    // One undo step for the whole run: the new project and every line,
+    // subtitle, music and camera edit after it share a merge key, so a single
+    // Undo brings back the project that was open before.
+    const step = `script-${Date.now()}`;
+    if (!run({ op: "replaceProject", project: plan.project }, step)) return;
+    app.filePath = null; // Save must not overwrite the file the old project came from
+    app.sceneIndex = 0;
+    app.frame = 0;
+    app.selected = null;
     const failed: string[] = [];
     busy = { done: 0, total: plan.lines.length, label: "Voicing lines" };
     for (const [i, l] of plan.lines.entries()) {
@@ -73,7 +80,7 @@ Maya (happy, cheer): You are the best!`;
         const name = l.text.length > 28 ? `${l.text.slice(0, 28)}…` : l.text;
         const media = await mediaFromBytes(bytes, `${name}.wav`, "audio/wav", { kind: "tts", text: l.text, voice: l.voice!, speed: 1 });
         const bubble = app.project?.scenes.find((s) => s.id === l.scene)?.items.find((it) => it.id === l.clipId.replace("clip-", "bubble-"));
-        run({ op: "addLine", scene: l.scene, clipId: l.clipId, media, speaker: l.speaker, start: bubble ? bubble.start : null });
+        run({ op: "addLine", scene: l.scene, clipId: l.clipId, media, speaker: l.speaker, start: bubble ? bubble.start : null }, step);
       } catch (e) {
         failed.push(`${l.who}: ${String((e as Error).message ?? e)}`);
       }
@@ -91,13 +98,14 @@ Maya (happy, cheer): You are the best!`;
         cmds.push({ op: "autoCamera", scene: s.id, style: speakers.size > 1 || height > width ? "cuts" : "punches" });
       }
     }
-    if (cmds.length) run({ op: "batch", commands: cmds });
+    if (cmds.length) run({ op: "batch", commands: cmds }, step);
+    endGesture();
     busy = null;
     open = false;
     app.sceneIndex = 0;
     app.frame = 0;
     if (failed.length) toast(`${failed.length} line(s) could not be voiced: ${failed[0]}`, "error");
-    else toast(voiced ? `Made ${p.scenes.length} scene(s) with ${plan.lines.length} voiced lines. Press Play movie.` : "Made the scenes with speech bubbles (voices need the desktop app).");
+    else toast(voiced ? `Made ${p.scenes.length} scene(s) with ${plan.lines.length} voiced lines. Press Play movie, or Undo to go back.` : "Made the scenes with speech bubbles (voices need the desktop app).");
   }
 </script>
 

@@ -42,6 +42,24 @@ fn undo_redo_and_merge() {
 }
 
 #[test]
+fn replacing_the_project_is_one_undo_step() {
+    let mut ed = Editor::new(demo::demo_project());
+    let before = ed.project.clone();
+    let mut next = demo::blank_project();
+    next.name = "From a script".into();
+    // The replacement and the edits that follow it, grouped as one gesture.
+    ed.apply(&Command::ReplaceProject { project: Box::new(next) }, Some("script")).unwrap();
+    ed.apply(&Command::SetMeta { name: Some("Renamed".into()), fps: None, width: None, height: None }, Some("script")).unwrap();
+    assert_eq!(ed.project.name, "Renamed");
+    assert!(ed.undo());
+    assert_eq!(ed.project, before);
+    assert!(ed.redo());
+    assert_eq!(ed.project.name, "Renamed");
+    let empty = Project { scenes: vec![], ..Default::default() };
+    assert!(ed.apply(&Command::ReplaceProject { project: Box::new(empty) }, None).is_err());
+}
+
+#[test]
 fn bad_commands_leave_project_untouched() {
     let mut ed = Editor::new(demo::demo_project());
     let before = ed.project.clone();

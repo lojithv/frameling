@@ -33,7 +33,7 @@ Legend: **[bug]** wrong output, **[ux]** friction, **[perf]** speed,
 - [x] **[ux] Loaded packs are forgotten on restart.** A pack has to be loaded
       again every session, and a project that uses one opens with missing items.
       Remember loaded packs and load them again on start.
-- [ ] **[ux] Script to video cannot be undone in one step.** It replaces the
+- [x] **[ux] Script to video cannot be undone in one step.** It replaces the
       project after a confirm; make the previous project come back with Undo, or
       at least offer to save first.
 - [ ] **[ux] Script errors are terse.** Unknown backgrounds and unrecognised
