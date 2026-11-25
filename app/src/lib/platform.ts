@@ -126,7 +126,7 @@ export interface ExportSettings {
 }
 
 /** The project as it should be exported: frame shape and subtitles from the settings. */
-function exportProject(s: ExportSettings): string {
+function exportProject(s: Pick<ExportSettings, "frame" | "captions">): string {
   const e = eng();
   const p = JSON.parse(e.project_json());
   if (s.frame && (s.frame.width !== p.width || s.frame.height !== p.height)) {
@@ -143,6 +143,23 @@ function exportProject(s: ExportSettings): string {
     p.captions = { ...base, enabled: s.captions };
   }
   return JSON.stringify(p);
+}
+
+/**
+ * An engine holding the project as it will be exported (frame shape, subtitles
+ * and asset packs), for previews such as the thumbnail picker. Free it when done.
+ */
+export async function exportPreviewEngine(s: Pick<ExportSettings, "frame" | "captions">) {
+  const { Engine } = await import("../engine/frameling.js");
+  const ex = new Engine();
+  try {
+    applyPacks(ex);
+    ex.load(exportProject(s));
+    return ex;
+  } catch (e) {
+    ex.free();
+    throw e;
+  }
 }
 
 /** A PNG of one global frame of an engine's project. */

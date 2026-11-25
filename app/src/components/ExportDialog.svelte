@@ -1,7 +1,10 @@
 <script lang="ts">
   import { app, fmtTime, eng } from "../lib/store.svelte";
   import { sceneStarts } from "../lib/playback";
-  import { exportVideo, cancelExport, isDesktop, type ExportSettings } from "../lib/platform";
+  import { untrack } from "svelte";
+  import { exportVideo, exportPreviewEngine, cancelExport, isDesktop, type ExportSettings } from "../lib/platform";
+  import { toImageData } from "../lib/thumbs";
+  import type { Engine } from "../engine/frameling.js";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
   const p = $derived(app.project!);
@@ -31,8 +34,55 @@
     if (quality === "draft") [w, h] = [w / 2, h / 2];
     return { w: Math.round(w / 2) * 2, h: Math.round(h / 2) * 2 };
   });
-  /** Thumbnail at the playhead (global frame). */
-  const thumbFrame = $derived((sceneStarts()[app.sceneIndex] ?? 0) + app.frame);
+  /** The playhead as a global frame. */
+  const playhead = $derived((sceneStarts()[app.sceneIndex] ?? 0) + app.frame);
+  const totalFrames = $derived(app.project ? eng().total_frames() : 1);
+  /** The thumbnail's frame: starts at the playhead each time the dialog opens. */
+  let thumbFrame = $state(0);
+  $effect(() => {
+    if (open) thumbFrame = untrack(() => Math.min(playhead, totalFrames - 1));
+  });
+
+  // ------------------------------------------------------------ thumbnail preview
+  // Rendered by an engine holding the export version of the project, so it
+  // shows the export's frame shape, subtitles and packs.
+  let canvas = $state<HTMLCanvasElement>();
+  let preview = $state<Engine | null>(null);
+  const previewSize = $derived.by(() => {
+    const k = Math.min(200 / frame.width, 112 / frame.height);
+    return { w: Math.max(2, Math.round(frame.width * k)), h: Math.max(2, Math.round(frame.height * k)) };
+  });
+  $effect(() => {
+    if (!open || !thumb) return;
+    const settings = { frame: reshaped ? frame : undefined, captions: burnCaptions };
+    let made: Engine | null = null;
+    let gone = false;
+    exportPreviewEngine(settings).then((e) => {
+      if (gone) return e.free();
+      made = e;
+      preview = e;
+    }, () => {});
+    return () => {
+      gone = true;
+      if (made) {
+        if (preview === made) preview = null;
+        made.free();
+      }
+    };
+  });
+  $effect(() => {
+    const e = preview, c = canvas, f = thumbFrame, { w, h } = previewSize;
+    if (!e || !c) return;
+    const id = requestAnimationFrame(() => {
+      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      const pw = Math.round(w * ratio), ph = Math.round(h * ratio);
+      c.width = pw;
+      c.height = ph;
+      const px = e.render_frame(Math.max(0, Math.min(e.total_frames() - 1, f)), pw, ph);
+      c.getContext("2d")!.putImageData(toImageData(px, pw, ph), 0, 0);
+    });
+    return () => cancelAnimationFrame(id);
+  });
 
   async function go() {
     const s: ExportSettings = {
@@ -71,7 +121,19 @@
         </div>
         {#if reshaped}<p class="warn">Your project is {p.width}×{p.height}: this export re-frames it around the middle of the scene, so check that everyone is in shot.</p>{/if}
         <label class="check"><input type="checkbox" bind:checked={burnCaptions} /> Burn in subtitles</label>
-        <label class="check"><input type="checkbox" bind:checked={thumb} /> Save a thumbnail (the frame at the playhead, {fmtTime(app.frame)})</label>
+        <label class="check"><input type="checkbox" bind:checked={thumb} /> Save a thumbnail</label>
+        {#if thumb}
+          <div class="thumb">
+            <canvas bind:this={canvas} style:width="{previewSize.w}px" style:height="{previewSize.h}px" aria-label="Thumbnail preview"></canvas>
+            <div class="pick">
+              <input type="range" min="0" max={Math.max(0, totalFrames - 1)} bind:value={thumbFrame} aria-label="Thumbnail frame" />
+              <div class="row">
+                <span class="dim">{fmtTime(thumbFrame)}</span>
+                <button class="link" onclick={() => (thumbFrame = Math.min(playhead, totalFrames - 1))} disabled={thumbFrame === playhead}>Use the playhead</button>
+              </div>
+            </div>
+          </div>
+        {/if}
         <label class="check"><input type="checkbox" bind:checked={srt} /> Save subtitles as .srt too</label>
         <div class="opts">
           <button class:on={quality === "high"} onclick={() => (quality = "high")}>Best quality</button>
@@ -150,6 +212,46 @@
     align-items: center;
     font-size: 13px;
     margin: 6px 0;
+  }
+  .thumb {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 2px 0 8px 24px;
+  }
+  .thumb canvas {
+    flex: none;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-0);
+  }
+  .pick {
+    flex: 1;
+    min-width: 0;
+  }
+  .pick input {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  .pick .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pick .dim {
+    font-variant-numeric: tabular-nums;
+  }
+  .link {
+    background: none;
+    border: none;
+    padding: 2px 0;
+    color: var(--accent-2);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .link:disabled {
+    color: var(--muted);
+    cursor: default;
   }
   .warn {
     font-size: 12px;

@@ -46,7 +46,7 @@ Legend: **[bug]** wrong output, **[ux]** friction, **[perf]** speed,
       stick.rs) and an unused `repository` workspace field.
 - [ ] **[perf] Draft export still renders every frame at full cost.** A draft
       could also render at half the frame rate.
-- [ ] **[feature] Thumbnail picker.** Choose the thumbnail frame in the export
+- [x] **[feature] Thumbnail picker.** Choose the thumbnail frame in the export
       dialog with a small scrubber and preview, instead of "the frame at the
       playhead".
 
