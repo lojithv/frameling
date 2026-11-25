@@ -36,7 +36,7 @@ Legend: **[bug]** wrong output, **[ux]** friction, **[perf]** speed,
 - [x] **[ux] Script to video cannot be undone in one step.** It replaces the
       project after a confirm; make the previous project come back with Undo, or
       at least offer to save first.
-- [ ] **[ux] Script errors are terse.** Unknown backgrounds and unrecognised
+- [x] **[ux] Script errors are terse.** Unknown backgrounds and unrecognised
       tags are only logged. Show them in the script dialog before generating,
       with the list of valid backgrounds and tags.
 

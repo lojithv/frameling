@@ -185,6 +185,96 @@ fn parse(src: &str) -> (String, bool, Vec<SceneSpec>) {
     (title, stick, scenes)
 }
 
+/// Something in a script that won't come out as written, found before
+/// generating: an unknown background or tag, or a line that isn't dialogue.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Problem {
+    /// 1-based line number.
+    pub line: usize,
+    pub message: String,
+}
+
+/// Every expression word a tag can use.
+const EXPRESSION_WORDS: &[&str] = &[
+    "neutral", "calm", "happy", "smiling", "excited", "glad", "sad", "upset", "angry", "mad", "annoyed", "surprised", "shocked", "amazed", "thinking", "curious", "unsure", "wink", "winking", "sly", "worried", "nervous", "scared", "anxious", "confused", "puzzled", "lost",
+];
+
+/// Edit distance, for "did you mean" suggestions.
+fn distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != *cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
+/// The known names closest to `word` (up to three tied for closest, and only
+/// when close enough to be a likely typo).
+fn closest<'a>(word: &str, known: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    let mut v: Vec<(usize, &str)> = known.map(|k| (distance(word, k), k)).collect();
+    v.sort();
+    let best = v.first().map_or(usize::MAX, |b| b.0);
+    let limit = (word.chars().count() / 3).clamp(1, 3);
+    v.into_iter().filter(|(d, _)| *d == best && *d <= limit).take(3).map(|(_, k)| k).collect()
+}
+
+fn suggest(list: &[&str]) -> String {
+    match list {
+        [] => String::new(),
+        [one] => format!(" Did you mean {one}?"),
+        _ => format!(" Did you mean {}?", list.join(", ")),
+    }
+}
+
+/// Check a script for things that won't come out as written. Generating still
+/// works: unknown backgrounds become the studio and unknown tags are ignored.
+pub fn check(src: &str, lib: &Library) -> Vec<Problem> {
+    let mut out = Vec::new();
+    let backgrounds = || lib.backgrounds.keys().map(String::as_str);
+    let tags = || EXPRESSION_WORDS.iter().copied().chain(lib.actions.keys().map(String::as_str));
+    for (n, raw) in src.lines().enumerate() {
+        let line = raw.trim();
+        let lower = line.to_lowercase();
+        let mut problem = |message: String| out.push(Problem { line: n + 1, message });
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") || line.starts_with('>') || lower.starts_with("title:") || lower.starts_with("style:") {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            let inner = line[1..line.len() - 1].trim().trim_start_matches("scene:").trim();
+            let bg = inner.split(',').next().unwrap_or("").trim().to_lowercase().replace(' ', "-");
+            if !bg.is_empty() && bg != "studio" && !lib.backgrounds.contains_key(&bg) {
+                problem(format!("There is no background called \"{bg}\", so this scene uses the studio.{}", suggest(&closest(&bg, backgrounds()))));
+            }
+            continue;
+        }
+        let Some((head, text)) = line.split_once(':') else {
+            problem("Not a line of dialogue, so it is left out. Write it as  Name: what they say".into());
+            continue;
+        };
+        let (who, tag_list) = match head.split_once('(') {
+            Some((w, t)) => (w.trim(), t.trim_end_matches(')').split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()),
+            None => (head.trim(), vec![]),
+        };
+        if who.is_empty() || who.chars().count() > 40 || text.trim().is_empty() {
+            problem("Not a line of dialogue, so it is left out. Write it as  Name: what they say".into());
+            continue;
+        }
+        for t in tag_list {
+            if expression(&t).is_none() && !lib.actions.contains_key(&t) {
+                problem(format!("\"{t}\" is not an expression or action, so it is ignored.{}", suggest(&closest(&t, tags()))));
+            }
+        }
+    }
+    out
+}
+
 fn expression(tag: &str) -> Option<Expression> {
     Some(match tag {
         "neutral" | "calm" => Expression::Neutral,
@@ -426,6 +516,19 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn check_finds_unknown_backgrounds_tags_and_stray_lines() {
+        let src = "Title: T\n[kitchn]\nMaya (hapy, wave): Hi!\nthis is not dialogue\n> fine\n[street, 4s]\nLeo (sad): Bye.";
+        let p = check(src, Library::builtin());
+        assert_eq!(p.len(), 3, "{p:?}");
+        assert_eq!(p[0].line, 2);
+        assert!(p[0].message.contains("kitchen"), "suggests the real name: {}", p[0].message);
+        assert_eq!(p[1].line, 3);
+        assert!(p[1].message.contains("\"hapy\"") && p[1].message.contains("happy"), "{}", p[1].message);
+        assert_eq!(p[2].line, 4);
+        assert!(check(SRC, Library::builtin()).is_empty(), "the test script is clean");
     }
 
     #[test]

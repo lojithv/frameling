@@ -30,6 +30,21 @@ Maya (happy, cheer): You are the best!`;
   let cancelled = false;
   let terms = $state<string | null>(null);
 
+  /** Unknown backgrounds and tags, and lines that aren't dialogue, found as you type. */
+  const problems: { line: number; message: string }[] = $derived(app.ready && src.trim() ? JSON.parse(eng().script_check(src)) : []);
+  let editor = $state<HTMLTextAreaElement>();
+
+  /** Select a line of the script, scrolled into view. */
+  function goToLine(n: number) {
+    if (!editor) return;
+    const lines = src.split("\n");
+    const start = lines.slice(0, n - 1).reduce((a, l) => a + l.length + 1, 0);
+    editor.focus();
+    editor.setSelectionRange(start, start + (lines[n - 1]?.length ?? 0));
+    const lh = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+    editor.scrollTop = Math.max(0, (n - 3) * lh);
+  }
+
   const loops: SoundInfo[] = $derived(app.ready ? (JSON.parse(eng().sound_catalog()) as SoundInfo[]).filter((s) => s.kind === "music") : []);
   const SIZES = { vertical: [1080, 1920], wide: [1280, 720], square: [1080, 1080] } as const;
 
@@ -134,7 +149,15 @@ Maya (happy, cheer): You are the best!`;
       <div class="cols">
         <label class="script">
           <span>Script</span>
-          <textarea bind:value={src} spellcheck="false" rows="14"></textarea>
+          <textarea bind:this={editor} bind:value={src} spellcheck="false" rows="14"></textarea>
+          {#if problems.length}
+            <ul class="problems" aria-label="Script problems">
+              {#each problems.slice(0, 4) as pr}
+                <li><button type="button" onclick={(e) => { e.preventDefault(); goToLine(pr.line); }}>Line {pr.line}</button> {pr.message}</li>
+              {/each}
+              {#if problems.length > 4}<li class="more">and {problems.length - 4} more</li>{/if}
+            </ul>
+          {/if}
         </label>
         <div class="side">
           <div class="field"><span>Shape</span>
@@ -221,6 +244,37 @@ Maya (happy, cheer): You are the best!`;
     flex-direction: column;
     gap: 6px;
     font-size: 12px;
+    color: var(--muted);
+  }
+  .problems {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 196, 87, 0.28);
+    background: rgba(255, 196, 87, 0.07);
+    color: #f3d9a4;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .problems button {
+    padding: 0 6px;
+    margin-right: 4px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 196, 87, 0.4);
+    background: transparent;
+    color: #ffd27a;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .problems button:hover {
+    background: rgba(255, 196, 87, 0.15);
+  }
+  .problems .more {
     color: var(--muted);
   }
   textarea {
