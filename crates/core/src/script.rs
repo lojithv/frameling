@@ -6,7 +6,9 @@
 //! [office]                      new scene with the "office" background (optionally [office, 6s])
 //! Maya (happy, wave): Hi Leo!   a spoken line; words in brackets pick an expression / action
 //! Leo (surprised): Oh, hi!
-//! > Meanwhile...                a caption across the bottom of this scene
+//! > Meanwhile...                a caption card at the top: before a scene's lines
+//!                               it opens that scene, after them it opens the
+//!                               next one (after the last scene, it ends the movie)
 //! ```
 //!
 //! [`plan`] casts the characters (look and voice stay the same across scenes)
@@ -31,7 +33,10 @@ struct SceneSpec {
     background: String,
     seconds: Option<f32>,
     lines: Vec<Line>,
+    /// Caption cards shown as the scene opens.
     captions: Vec<String>,
+    /// Captions written after the last line so far: they open the next scene.
+    trailing: Vec<String>,
 }
 
 /// What to make, besides the script itself.
@@ -113,6 +118,8 @@ fn parse(src: &str) -> (String, bool, Vec<SceneSpec>) {
     let mut title = "Untitled".to_string();
     let mut stick = false;
     let mut scenes: Vec<SceneSpec> = Vec::new();
+    // The first scene was made without a [heading] (lines before any scene).
+    let mut implicit = false;
     for raw in src.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
@@ -128,23 +135,50 @@ fn parse(src: &str) -> (String, bool, Vec<SceneSpec>) {
             let mut parts = inner.split(',').map(str::trim);
             let background = parts.next().unwrap_or("studio").to_lowercase().replace(' ', "-");
             let seconds = parts.next().and_then(|s| s.trim_end_matches('s').parse().ok());
-            scenes.push(SceneSpec { background, seconds, lines: vec![], captions: vec![] });
+            // Captions written after the previous scene's dialogue open this one,
+            // as do captions written above the first scene heading.
+            let mut captions = scenes.last_mut().map(|p| std::mem::take(&mut p.trailing)).unwrap_or_default();
+            if implicit && scenes.len() == 1 && scenes[0].lines.is_empty() {
+                captions = scenes.pop().unwrap().captions;
+            }
+            implicit = false;
+            scenes.push(SceneSpec { background, seconds, lines: vec![], captions, trailing: vec![] });
         } else {
             if scenes.is_empty() {
-                scenes.push(SceneSpec { background: "studio".into(), seconds: None, lines: vec![], captions: vec![] });
+                implicit = true;
+                scenes.push(SceneSpec { background: "studio".into(), seconds: None, lines: vec![], captions: vec![], trailing: vec![] });
             }
             let s = scenes.last_mut().unwrap();
             if let Some(c) = line.strip_prefix('>') {
-                s.captions.push(c.trim().to_string());
+                let c = c.trim().to_string();
+                if c.is_empty() {
+                    continue;
+                }
+                if s.lines.is_empty() {
+                    s.captions.push(c);
+                } else {
+                    s.trailing.push(c);
+                }
             } else if let Some((head, text)) = line.split_once(':') {
                 let (who, tags) = match head.split_once('(') {
                     Some((w, t)) => (w.trim(), t.trim_end_matches(')').split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()),
                     None => (head.trim(), vec![]),
                 };
                 if !who.is_empty() && who.len() <= 40 && !text.trim().is_empty() {
+                    // More dialogue follows, so captions written mid-scene open this scene.
+                    let mid = std::mem::take(&mut s.trailing);
+                    s.captions.extend(mid);
                     s.lines.push(Line { who: who.to_string(), tags, text: text.trim().to_string() });
                 }
             }
+        }
+    }
+    // Captions after the last scene's dialogue end the movie on a card of their own.
+    if let Some(last) = scenes.last_mut() {
+        let end = std::mem::take(&mut last.trailing);
+        if !end.is_empty() {
+            let background = last.background.clone();
+            scenes.push(SceneSpec { background, seconds: None, lines: vec![], captions: end, trailing: vec![] });
         }
     }
     scenes.retain(|s| !s.lines.is_empty() || !s.captions.is_empty());
@@ -260,17 +294,24 @@ pub fn plan(src: &str, lib: &Library, opts: &Options) -> Result<Plan, String> {
                 ..Default::default()
             });
         }
+        // Caption cards open the scene and fade out once read. A scene with no
+        // one in it (the closing card) shows them larger, in the middle.
+        let card = spec.captions.iter().map(|c| reading_frames(c, fps)).max().unwrap_or(0) + fps;
+        let alone = spec.lines.is_empty();
+        let (top, gap, size) = if alone { (360.0 - (spec.captions.len() as f32 - 1.0) * 36.0, 72.0, 44.0) } else { (110.0, 56.0, 30.0) };
         for (ci, c) in spec.captions.iter().enumerate() {
             scene.items.push(Item {
                 id: format!("caption-{}-{ci}", si + 1),
                 name: "Caption".into(),
                 x: 640.0,
-                y: 110.0 + ci as f32 * 56.0,
+                y: top + ci as f32 * gap,
+                end: (!alone).then_some(card),
                 enter: Effect::Fade,
+                exit: Effect::Fade,
                 kind: ItemKind::Text(TextItem {
                     text: c.clone(),
                     style: TextStyle::Caption,
-                    size: 30.0,
+                    size,
                     color: crate::geom::Color::WHITE,
                     fill: crate::geom::Color::rgba(0x14, 0x17, 0x26, 0xcc),
                     tail: Tail::None,
@@ -312,6 +353,9 @@ pub fn plan(src: &str, lib: &Library, opts: &Options) -> Result<Plan, String> {
             t += frames + fps / 5;
         }
         scene.duration = scene.duration.max(t + fps / 2);
+        if alone {
+            scene.duration = scene.duration.max(card + fps / 2);
+        }
         log.push(format!("{}: {} ({}), {} lines", scene.id, scene.background.preset, who.join(", "), spec.lines.len()));
         project.scenes.push(scene);
     }
@@ -372,5 +416,33 @@ mod tests {
         assert!(p.lines.is_empty());
         let bubbles = p.project.scenes[0].items.iter().filter(|i| i.id.starts_with("bubble-")).count();
         assert_eq!(bubbles, 2);
+    }
+
+    fn captions(s: &Scene) -> Vec<(&str, Option<u32>)> {
+        s.items
+            .iter()
+            .filter_map(|i| match &i.kind {
+                ItemKind::Text(t) if i.id.starts_with("caption-") => Some((t.text.as_str(), i.end)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn captions_open_the_scene_they_lead_into() {
+        let src = "> Monday\n[office]\nMaya: Hi!\n> Later that day\n[park]\n> In the park\nLeo: Hello.\n> Leo waves\nLeo: Bye.\n> The end";
+        let p = plan(src, Library::builtin(), &Options::default()).unwrap();
+        let s = &p.project.scenes;
+        assert_eq!(s.len(), 3, "office, park and a closing card");
+        // Above the first heading: opens the office, and leaves it once read.
+        assert_eq!(captions(&s[0]).iter().map(|c| c.0).collect::<Vec<_>>(), ["Monday"]);
+        assert_eq!(s[0].background.preset, "office");
+        let park: Vec<_> = captions(&s[1]).iter().map(|c| c.0).collect();
+        assert_eq!(park, ["Later that day", "In the park", "Leo waves"]);
+        assert!(captions(&s[1]).iter().all(|c| c.1.is_some()), "cards fade out once read");
+        let end = captions(&s[2]);
+        assert_eq!(end, [("The end", None)], "the closing card holds to the end");
+        assert_eq!(s[2].background.preset, s[1].background.preset);
+        assert!(s[2].duration >= 2 * p.project.fps);
     }
 }
