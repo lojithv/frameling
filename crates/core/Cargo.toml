@@ -4,6 +4,7 @@ description = "Document model, commands, undo and the deterministic timeline eva
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 serde.workspace = true

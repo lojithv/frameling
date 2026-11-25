@@ -3,6 +3,7 @@
 
 import init, { Engine } from "../engine/frameling.js";
 import type { Catalog, Command, Item, ItemHit, Look, Project, Scene } from "./types";
+import { restorePacks } from "./packs";
 
 let engine: Engine | null = null;
 
@@ -92,6 +93,8 @@ export function setAutoKey(on: boolean) {
 export async function boot() {
   await init();
   engine = new Engine();
+  // Packs first, so a restored project finds its props and backgrounds.
+  restorePacks(engine);
   const saved = await loadAutosave();
   let restored = false;
   if (saved) {

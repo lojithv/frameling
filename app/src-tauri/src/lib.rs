@@ -36,14 +36,22 @@ fn cancel_export() {
 }
 
 #[tauri::command]
-async fn export_video(app: tauri::AppHandle, project: String, path: String, width: u32, height: u32, crf: Option<u8>) -> Result<(), String> {
+async fn export_video(app: tauri::AppHandle, project: String, path: String, width: u32, height: u32, crf: Option<u8>, step: Option<u32>, packs: Option<Vec<String>>) -> Result<(), String> {
     let project = Project::from_json(&project)?;
+    // The asset packs loaded in the editor, on top of the built-in library.
+    let mut lib = Library::builtin().clone();
+    for p in packs.unwrap_or_default() {
+        lib.add_pack_json(&p)?;
+    }
     CANCEL.store(false, Ordering::SeqCst);
     let mut opts = ExportOptions::for_project(&project);
     opts.width = width;
     opts.height = height;
     if let Some(c) = crf {
         opts.crf = c.min(51);
+    }
+    if let Some(n) = step {
+        opts.step = n.max(1);
     }
     // Prefer an FFmpeg bundled in the app's resources, if present.
     if let Ok(res) = app.path().resource_dir() {
@@ -54,8 +62,7 @@ async fn export_video(app: tauri::AppHandle, project: String, path: String, widt
     }
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let lib = Library::builtin();
-        run_export(&project, lib, std::path::Path::new(&path), &opts, |done, total| {
+        run_export(&project, &lib, std::path::Path::new(&path), &opts, |done, total| {
             let _ = handle.emit("export-progress", (done, total));
             !CANCEL.load(Ordering::SeqCst)
         })

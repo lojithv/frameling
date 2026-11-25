@@ -3,7 +3,7 @@
   // subtitles, music and an edited camera. The engine plans the project
   // (crates/core/src/script.rs); this dialog voices each line with the
   // built-in text-to-speech and places it.
-  import { app, eng, loadProject, run, toast } from "../lib/store.svelte";
+  import { app, eng, endGesture, run, toast } from "../lib/store.svelte";
   import { listVoices, synthBytes, ttsAvailable, termsAccepted, acceptTerms, voiceTerms } from "../lib/voice";
   import { mediaFromBytes } from "../lib/audio";
   import type { Command, Project, SoundInfo } from "../lib/types";
@@ -30,6 +30,21 @@ Maya (happy, cheer): You are the best!`;
   let cancelled = false;
   let terms = $state<string | null>(null);
 
+  /** Unknown backgrounds and tags, and lines that aren't dialogue, found as you type. */
+  const problems: { line: number; message: string }[] = $derived(app.ready && src.trim() ? JSON.parse(eng().script_check(src)) : []);
+  let editor = $state<HTMLTextAreaElement>();
+
+  /** Select a line of the script, scrolled into view. */
+  function goToLine(n: number) {
+    if (!editor) return;
+    const lines = src.split("\n");
+    const start = lines.slice(0, n - 1).reduce((a, l) => a + l.length + 1, 0);
+    editor.focus();
+    editor.setSelectionRange(start, start + (lines[n - 1]?.length ?? 0));
+    const lh = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+    editor.scrollTop = Math.max(0, (n - 3) * lh);
+  }
+
   const loops: SoundInfo[] = $derived(app.ready ? (JSON.parse(eng().sound_catalog()) as SoundInfo[]).filter((s) => s.kind === "music") : []);
   const SIZES = { vertical: [1080, 1920], wide: [1280, 720], square: [1080, 1080] } as const;
 
@@ -44,7 +59,6 @@ Maya (happy, cheer): You are the best!`;
   }
 
   async function generate() {
-    if (app.dirty && !confirm("Discard unsaved changes in the current project?")) return;
     let voices = await castVoices().catch(() => []);
     if (voices.some((v) => v.startsWith("supertonic:")) && !termsAccepted()) {
       if (terms === null) {
@@ -62,7 +76,15 @@ Maya (happy, cheer): You are the best!`;
       toast(String((e as Error).message ?? e), "error");
       return;
     }
-    if (!loadProject(JSON.stringify(plan.project), null)) return;
+    // One undo step for the whole run: the new project and every line,
+    // subtitle, music and camera edit after it share a merge key, so a single
+    // Undo brings back the project that was open before.
+    const step = `script-${Date.now()}`;
+    if (!run({ op: "replaceProject", project: plan.project }, step)) return;
+    app.filePath = null; // Save must not overwrite the file the old project came from
+    app.sceneIndex = 0;
+    app.frame = 0;
+    app.selected = null;
     const failed: string[] = [];
     busy = { done: 0, total: plan.lines.length, label: "Voicing lines" };
     for (const [i, l] of plan.lines.entries()) {
@@ -73,7 +95,7 @@ Maya (happy, cheer): You are the best!`;
         const name = l.text.length > 28 ? `${l.text.slice(0, 28)}…` : l.text;
         const media = await mediaFromBytes(bytes, `${name}.wav`, "audio/wav", { kind: "tts", text: l.text, voice: l.voice!, speed: 1 });
         const bubble = app.project?.scenes.find((s) => s.id === l.scene)?.items.find((it) => it.id === l.clipId.replace("clip-", "bubble-"));
-        run({ op: "addLine", scene: l.scene, clipId: l.clipId, media, speaker: l.speaker, start: bubble ? bubble.start : null });
+        run({ op: "addLine", scene: l.scene, clipId: l.clipId, media, speaker: l.speaker, start: bubble ? bubble.start : null }, step);
       } catch (e) {
         failed.push(`${l.who}: ${String((e as Error).message ?? e)}`);
       }
@@ -91,13 +113,14 @@ Maya (happy, cheer): You are the best!`;
         cmds.push({ op: "autoCamera", scene: s.id, style: speakers.size > 1 || height > width ? "cuts" : "punches" });
       }
     }
-    if (cmds.length) run({ op: "batch", commands: cmds });
+    if (cmds.length) run({ op: "batch", commands: cmds }, step);
+    endGesture();
     busy = null;
     open = false;
     app.sceneIndex = 0;
     app.frame = 0;
     if (failed.length) toast(`${failed.length} line(s) could not be voiced: ${failed[0]}`, "error");
-    else toast(voiced ? `Made ${p.scenes.length} scene(s) with ${plan.lines.length} voiced lines. Press Play movie.` : "Made the scenes with speech bubbles (voices need the desktop app).");
+    else toast(voiced ? `Made ${p.scenes.length} scene(s) with ${plan.lines.length} voiced lines. Press Play movie, or Undo to go back.` : "Made the scenes with speech bubbles (voices need the desktop app).");
   }
 </script>
 
@@ -126,7 +149,15 @@ Maya (happy, cheer): You are the best!`;
       <div class="cols">
         <label class="script">
           <span>Script</span>
-          <textarea bind:value={src} spellcheck="false" rows="14"></textarea>
+          <textarea bind:this={editor} bind:value={src} spellcheck="false" rows="14"></textarea>
+          {#if problems.length}
+            <ul class="problems" aria-label="Script problems">
+              {#each problems.slice(0, 4) as pr}
+                <li><button type="button" onclick={(e) => { e.preventDefault(); goToLine(pr.line); }}>Line {pr.line}</button> {pr.message}</li>
+              {/each}
+              {#if problems.length > 4}<li class="more">and {problems.length - 4} more</li>{/if}
+            </ul>
+          {/if}
         </label>
         <div class="side">
           <div class="field"><span>Shape</span>
@@ -213,6 +244,37 @@ Maya (happy, cheer): You are the best!`;
     flex-direction: column;
     gap: 6px;
     font-size: 12px;
+    color: var(--muted);
+  }
+  .problems {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 196, 87, 0.28);
+    background: rgba(255, 196, 87, 0.07);
+    color: #f3d9a4;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .problems button {
+    padding: 0 6px;
+    margin-right: 4px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 196, 87, 0.4);
+    background: transparent;
+    color: #ffd27a;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .problems button:hover {
+    background: rgba(255, 196, 87, 0.15);
+  }
+  .problems .more {
     color: var(--muted);
   }
   textarea {

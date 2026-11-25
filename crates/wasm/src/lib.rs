@@ -54,6 +54,12 @@ impl Engine {
         serde_json::to_string(&plan).map_err(err)
     }
 
+    /// Script to video: problems in a screenplay (unknown backgrounds and tags,
+    /// lines that aren't dialogue) as JSON `[{line, message}]`.
+    pub fn script_check(&self, src: &str) -> String {
+        serde_json::to_string(&frameling_core::script::check(src, &self.lib)).unwrap_or_else(|_| "[]".into())
+    }
+
     /// Templates (id, name, description, best shape) as JSON.
     pub fn templates(&self) -> String {
         serde_json::to_string(&frameling_core::templates::catalog()).unwrap_or_default()

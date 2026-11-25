@@ -4,7 +4,8 @@
 
 import { toImageData } from "./thumbs";
 import { app, eng, loadProject, toast, rememberRecent, forgetRecent } from "./store.svelte";
-import { exportInBrowser } from "./webexport";
+import { exportInBrowser, frameStep } from "./webexport";
+import { addPack, applyPacks, packJsons } from "./packs";
 
 export const isDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -125,7 +126,7 @@ export interface ExportSettings {
 }
 
 /** The project as it should be exported: frame shape and subtitles from the settings. */
-function exportProject(s: ExportSettings): string {
+function exportProject(s: Pick<ExportSettings, "frame" | "captions">): string {
   const e = eng();
   const p = JSON.parse(e.project_json());
   if (s.frame && (s.frame.width !== p.width || s.frame.height !== p.height)) {
@@ -142,6 +143,23 @@ function exportProject(s: ExportSettings): string {
     p.captions = { ...base, enabled: s.captions };
   }
   return JSON.stringify(p);
+}
+
+/**
+ * An engine holding the project as it will be exported (frame shape, subtitles
+ * and asset packs), for previews such as the thumbnail picker. Free it when done.
+ */
+export async function exportPreviewEngine(s: Pick<ExportSettings, "frame" | "captions">) {
+  const { Engine } = await import("../engine/frameling.js");
+  const ex = new Engine();
+  try {
+    applyPacks(ex);
+    ex.load(exportProject(s));
+    return ex;
+  } catch (e) {
+    ex.free();
+    throw e;
+  }
 }
 
 /** A PNG of one global frame of an engine's project. */
@@ -170,10 +188,22 @@ export async function exportVideo(s: ExportSettings) {
   cancelRequested = false;
   const total = eng().total_frames();
   const json = exportProject(s);
-  // A second engine holding the export version (the editor's stays untouched).
+  // A second engine holding the export version (the editor's stays untouched),
+  // with the same asset packs. Freed however the export ends.
   const { Engine } = await import("../engine/frameling.js");
   const ex = new Engine();
-  ex.load(json);
+  try {
+    applyPacks(ex);
+    ex.load(json);
+    await exportWith(ex, s, json, total);
+  } catch (e) {
+    toast(`Export failed: ${(e as Error).message ?? e}`, "error");
+  } finally {
+    ex.free();
+  }
+}
+
+async function exportWith(ex: import("../engine/frameling.js").Engine, s: ExportSettings, json: string, total: number) {
   const srt = s.srt ? ex.captions_srt() : "";
   if (isDesktop) {
     const { invoke, dialog, event } = await tauri();
@@ -187,7 +217,7 @@ export async function exportVideo(s: ExportSettings) {
       app.exporting = { done: e.payload[0], total: e.payload[1], label: "Rendering" };
     });
     try {
-      await invoke("export_video", { project: json, path, width: s.width, height: s.height, crf: s.quality === "draft" ? 28 : 20 });
+      await invoke("export_video", { project: json, path, width: s.width, height: s.height, crf: s.quality === "draft" ? 28 : 20, step: frameStep(s), packs: packJsons() });
       const base = path.replace(/\.[a-z0-9]+$/i, "");
       const extras: string[] = [];
       if (s.thumbnail != null) {
@@ -199,7 +229,6 @@ export async function exportVideo(s: ExportSettings) {
         extras.push("subtitles");
       }
       toast(`Exported ${path}${extras.length ? ` (+ ${extras.join(" and ")})` : ""}`);
-      ex.free();
     } catch (e) {
       toast(String(e), cancelRequested ? "info" : "error");
     } finally {
@@ -239,10 +268,10 @@ export function loadPackFile(): Promise<void> {
       const f = input.files?.[0];
       if (!f) return resolve();
       try {
-        const id = eng().add_pack(await f.text());
+        const { id, remembered } = addPack(eng(), await f.text());
         app.catalog = JSON.parse(eng().catalog());
         app.rev++;
-        toast(`Loaded pack "${id}"`);
+        toast(remembered ? `Loaded pack "${id}"` : `Loaded pack "${id}" (too big to remember: load it again next time)`);
       } catch (e) {
         toast(`Invalid pack: ${(e as Error).message ?? e}`, "error");
       }

@@ -20,6 +20,11 @@ import type { AudioEvent } from "./types";
 import { toImageData } from "./thumbs";
 import type { ExportSettings } from "./platform";
 
+/** Quick drafts render every other frame: half the work, same timing and sound. */
+export function frameStep(s: Pick<ExportSettings, "quality">): number {
+  return s.quality === "draft" ? 2 : 1;
+}
+
 /** Returns the video, or null if cancelled. `progress` returns false to cancel. */
 export async function exportInBrowser(
   s: ExportSettings,
@@ -54,7 +59,8 @@ export async function exportInBrowser(
     target: new BufferTarget(),
   });
   const video = new CanvasSource(canvas, { codec: vcodec, bitrate: s.quality === "draft" ? QUALITY_MEDIUM : QUALITY_HIGH, keyFrameInterval: 2 });
-  output.addVideoTrack(video, { frameRate: fps });
+  const step = frameStep(s);
+  output.addVideoTrack(video, { frameRate: fps / step });
 
   const events: AudioEvent[] = JSON.parse(e.audio_events());
   let audio: AudioBufferSource | null = null;
@@ -71,11 +77,11 @@ export async function exportInBrowser(
     audio.close();
   }
 
-  for (let f = 0; f < total; f++) {
+  for (let f = 0; f < total; f += step) {
     const px = e.render_frame(f, w, h);
     ctx.putImageData(toImageData(px, w, h), 0, 0);
-    await video.add(f / fps, 1 / fps);
-    if (f % 5 === 0 && !progress(f, "Rendering")) return cancel(output);
+    await video.add(f / fps, Math.min(step, total - f) / fps);
+    if ((f / step) % 5 === 0 && !progress(f, "Rendering")) return cancel(output);
   }
   video.close();
   progress(total, "Finishing");

@@ -328,4 +328,5 @@ export type Command =
   | { op: "cameraMove"; scene: Id; move: CameraMove; frame: number; duration?: number; target?: Id | null; strength?: number }
   | { op: "autoCamera"; scene: Id; style: "cuts" | "punches"; strength?: number }
   | { op: "addBuiltinMedia"; sound: string }
-  | { op: "batch"; commands: Command[] };
+  | { op: "batch"; commands: Command[] }
+  | { op: "replaceProject"; project: Project };
