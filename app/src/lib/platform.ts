@@ -4,7 +4,7 @@
 
 import { toImageData } from "./thumbs";
 import { app, eng, loadProject, toast, rememberRecent, forgetRecent } from "./store.svelte";
-import { exportInBrowser } from "./webexport";
+import { exportInBrowser, frameStep } from "./webexport";
 import { addPack, applyPacks, packJsons } from "./packs";
 
 export const isDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -217,7 +217,7 @@ async function exportWith(ex: import("../engine/frameling.js").Engine, s: Export
       app.exporting = { done: e.payload[0], total: e.payload[1], label: "Rendering" };
     });
     try {
-      await invoke("export_video", { project: json, path, width: s.width, height: s.height, crf: s.quality === "draft" ? 28 : 20, packs: packJsons() });
+      await invoke("export_video", { project: json, path, width: s.width, height: s.height, crf: s.quality === "draft" ? 28 : 20, step: frameStep(s), packs: packJsons() });
       const base = path.replace(/\.[a-z0-9]+$/i, "");
       const extras: string[] = [];
       if (s.thumbnail != null) {

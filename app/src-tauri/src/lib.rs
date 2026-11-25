@@ -36,7 +36,7 @@ fn cancel_export() {
 }
 
 #[tauri::command]
-async fn export_video(app: tauri::AppHandle, project: String, path: String, width: u32, height: u32, crf: Option<u8>, packs: Option<Vec<String>>) -> Result<(), String> {
+async fn export_video(app: tauri::AppHandle, project: String, path: String, width: u32, height: u32, crf: Option<u8>, step: Option<u32>, packs: Option<Vec<String>>) -> Result<(), String> {
     let project = Project::from_json(&project)?;
     // The asset packs loaded in the editor, on top of the built-in library.
     let mut lib = Library::builtin().clone();
@@ -49,6 +49,9 @@ async fn export_video(app: tauri::AppHandle, project: String, path: String, widt
     opts.height = height;
     if let Some(c) = crf {
         opts.crf = c.min(51);
+    }
+    if let Some(n) = step {
+        opts.step = n.max(1);
     }
     // Prefer an FFmpeg bundled in the app's resources, if present.
     if let Ok(res) = app.path().resource_dir() {

@@ -22,11 +22,14 @@ pub struct ExportOptions {
     pub crf: u8,
     /// Render threads (0 = number of CPUs).
     pub threads: usize,
+    /// Render every n-th frame (2 = half the frame rate, for quick drafts).
+    /// Timing and audio are unchanged; motion is just less smooth.
+    pub step: u32,
 }
 
 impl ExportOptions {
     pub fn for_project(p: &Project) -> ExportOptions {
-        ExportOptions { width: p.width, height: p.height, ffmpeg: find_ffmpeg(), crf: 20, threads: 0 }
+        ExportOptions { width: p.width, height: p.height, ffmpeg: find_ffmpeg(), crf: 20, threads: 0, step: 1 }
     }
 }
 
@@ -93,6 +96,7 @@ pub fn export_video(
     }
     let (w, h) = (opts.width.max(2) & !1, opts.height.max(2) & !1);
     let fps = project.fps.max(1);
+    let step = opts.step.clamp(1, fps);
 
     // Write embedded media to a temp folder for FFmpeg.
     let tmp = std::env::temp_dir().join(format!("frameling-export-{}", std::process::id()));
@@ -114,7 +118,7 @@ pub fn export_video(
     let webm = out.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("webm"));
     let mut cmd = Command::new(&opts.ffmpeg);
     cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
-        .args(["-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{w}x{h}"), "-r", &fps.to_string(), "-i", "-"]);
+        .args(["-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{w}x{h}"), "-r", &format!("{fps}/{step}"), "-i", "-"]);
     for ev in &events {
         if ev.looped {
             cmd.args(["-stream_loop", "-1"]);
@@ -176,14 +180,16 @@ pub fn export_video(
 
     let threads = if opts.threads == 0 { std::thread::available_parallelism().map_or(4, |n| n.get()) } else { opts.threads };
     let batch = (threads * 2) as u32;
-    let mut frame = 0;
+    let picks: Vec<u32> = (0..total).step_by(step as usize).collect();
+    let mut next = 0;
     let mut cancelled = false;
     let mut write_err = None;
-    while frame < total {
-        let end = (frame + batch).min(total);
+    while next < picks.len() {
+        let end = (next + batch as usize).min(picks.len());
         let frames: Vec<Vec<u8>> = std::thread::scope(|s| {
-            let handles: Vec<_> = (frame..end)
-                .map(|f| s.spawn(move || frameling_render::render(&evaluate(project, lib, f), w, h)))
+            let handles: Vec<_> = picks[next..end]
+                .iter()
+                .map(|&f| s.spawn(move || frameling_render::render(&evaluate(project, lib, f), w, h)))
                 .collect();
             handles.into_iter().map(|h| h.join().expect("render thread")).collect()
         });
@@ -196,8 +202,9 @@ pub fn export_video(
         if write_err.is_some() {
             break;
         }
-        frame = end;
-        if !progress(frame, total) {
+        next = end;
+        let done = picks.get(next).copied().unwrap_or(total);
+        if !progress(done, total) {
             cancelled = true;
             break;
         }

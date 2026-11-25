@@ -1,7 +1,7 @@
 //! `frameling` command-line tool.
 //!
 //!   frameling demo <out.frameling>                 write the demo project
-//!   frameling render <project> <out.mp4|webm> [--width W --height H --crf N --ffmpeg PATH --pack pack.json]
+//!   frameling render <project> <out.mp4|webm> [--width W --height H --crf N --step N --ffmpeg PATH --pack pack.json]
 //!   frameling still <project> <frame> <out.png> [--width W --height H --pack pack.json]
 //!   frameling apply <project> <commands.json> <out>  apply a JSON array of commands (automation)
 //!   frameling voices [--tts DIR]                    list text-to-speech voices
@@ -82,6 +82,9 @@ fn run() -> Result<(), String> {
             }
             if let Some(c) = flag(&args, "--crf") {
                 opts.crf = c.parse().map_err(|_| "bad --crf")?;
+            }
+            if let Some(n) = flag(&args, "--step") {
+                opts.step = n.parse().map_err(|_| "bad --step")?;
             }
             if let Some(f) = flag(&args, "--ffmpeg") {
                 opts.ffmpeg = PathBuf::from(f);

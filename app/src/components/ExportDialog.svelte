@@ -143,7 +143,7 @@
           <button class:on={format === "mp4"} onclick={() => (format = "mp4")}>MP4 (H.264)</button>
           <button class:on={format === "webm"} onclick={() => (format = "webm")}>WebM (VP9)</button>
         </div>
-        <p class="dim">{size.w}×{size.h} · {isDesktop ? "rendered natively with FFmpeg" : "rendered in your browser with WebCodecs"}</p>
+        <p class="dim">{size.w}×{size.h}{quality === "draft" ? ` at ${Math.round(p.fps / 2)} fps` : ""} · {isDesktop ? "rendered natively with FFmpeg" : "rendered in your browser with WebCodecs"}</p>
         <div class="btns">
           <button onclick={() => (open = false)}>Close</button>
           <button class="primary" onclick={go}>Export</button>
