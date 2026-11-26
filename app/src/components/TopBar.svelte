@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app, undo, redo, loadProject, eng, forgetRecent } from "../lib/store.svelte";
-  import { openProject, openPath, saveProject, isDesktop } from "../lib/platform";
+  import { openProject, openPath, saveProject, isDesktop, okToDiscard } from "../lib/platform";
   import { play, stop } from "../lib/playback";
 
   let { onExport, onTemplates, onScript }: { onExport: () => void; onTemplates: () => void; onScript: () => void } = $props();
@@ -8,7 +8,7 @@
 
   function newProject(demo: boolean) {
     menu = false;
-    if (app.dirty && !confirm("Discard unsaved changes?")) return;
+    if (!okToDiscard()) return;
     const e = eng();
     if (demo) e.load_demo();
     else e.load_blank();
@@ -20,7 +20,7 @@
     menu = false;
     recentOpen = false;
     if (path === app.filePath && !app.dirty) return;
-    if (app.dirty && !confirm("Discard unsaved changes?")) return;
+    if (!okToDiscard()) return;
     await openPath(path);
   }
   /** "~/Documents/frameling-projects" style folder label. */

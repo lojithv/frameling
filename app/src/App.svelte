@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { app, boot, undo, redo, run, currentScene, selectedItem, toast } from "./lib/store.svelte";
-  import { uid } from "./lib/defaults";
+  import { nudgeSelected, duplicateSelected, copySelected, cutSelected, paste, hasClip } from "./lib/edit.svelte";
   import { toggle } from "./lib/playback";
-  import { openProject, saveProject, watchFileForAgents } from "./lib/platform";
+  import { openProject, saveProject, resumeFile, watchFileForAgents } from "./lib/platform";
   import TopBar from "./components/TopBar.svelte";
   import Library from "./components/Library.svelte";
   import Stage from "./components/Stage.svelte";
@@ -21,6 +21,7 @@
 
   onMount(() => {
     boot()
+      .then(resumeFile)
       .then(watchFileForAgents)
       .catch((e) => (error = String(e)));
   });
@@ -55,19 +56,23 @@
       run({ op: "removeItem", scene: scene.id, id: item.id });
     } else if (mod && e.key.toLowerCase() === "d" && item && scene) {
       e.preventDefault();
-      const copy = structuredClone($state.snapshot(item));
-      copy.id = uid(copy.kind.type);
-      copy.x += 40;
-      if (run({ op: "addItem", scene: scene.id, item: copy })) app.selected = copy.id;
-    } else if (e.key.startsWith("Arrow") && item && scene && !item.locked) {
+      duplicateSelected();
+    } else if (mod && e.key.toLowerCase() === "c" && item) {
+      if (window.getSelection()?.toString()) return; // copying page text
+      e.preventDefault();
+      copySelected();
+    } else if (mod && e.key.toLowerCase() === "x" && item && scene) {
+      e.preventDefault();
+      cutSelected();
+    } else if (mod && e.key.toLowerCase() === "v" && hasClip()) {
+      e.preventDefault();
+      paste();
+    } else if (e.key.startsWith("Arrow") && !mod && item && scene && !item.locked) {
       e.preventDefault();
       const step = e.shiftKey ? 10 : 1;
-      const it = structuredClone($state.snapshot(item));
-      if (e.key === "ArrowLeft") it.x -= step;
-      if (e.key === "ArrowRight") it.x += step;
-      if (e.key === "ArrowUp") it.y -= step;
-      if (e.key === "ArrowDown") it.y += step;
-      run({ op: "updateItem", scene: scene.id, item: it }, "nudge");
+      const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+      const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+      nudgeSelected(dx, dy);
     } else if (e.key === "Escape") {
       app.selected = null;
     } else if (e.key === "," || e.key === ".") {

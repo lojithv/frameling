@@ -3,8 +3,8 @@
 A working list after the creator essentials landed (see ROADMAP.md). Ranked by
 impact: bugs that give a wrong video first, then things that waste the user's
 time, then polish. Each item is ticked off when it is merged to main, with the
-pull request that did it. Items ticked here are done on branch
-fix/post-merge-polish.
+pull request that did it. Rounds 1 and 2 landed in PRs 1 and 2; round 3
+is on branch fix/editing-round-3.
 
 Legend: **[bug]** wrong output, **[ux]** friction, **[perf]** speed,
 **[polish]** looks or code health, **[feature]** missing piece.
@@ -49,6 +49,29 @@ Legend: **[bug]** wrong output, **[ux]** friction, **[perf]** speed,
 - [x] **[feature] Thumbnail picker.** Choose the thumbnail frame in the export
       dialog with a small scrubber and preview, instead of "the frame at the
       playhead".
+
+## Round 3 (editing and desktop fixes)
+
+- [x] **[bug] Arrow-key nudge does nothing on animated items.** It moved the
+      base place, which position keys override. It is now an edit at the
+      playhead like a drag (keys it), and a burst of presses is one undo step.
+- [x] **[bug] Duplicate loses its offset on animated items.** Ctrl+D and the
+      Inspector's Duplicate shifted only the base place; the copy now moves its
+      position keys and old-style movement too, and sits just above the original.
+- [x] **[bug] A restored session forgets its file.** After a restart, Save asked
+      where to save again and the agent live-sync stopped. The autosave now
+      keeps the file path and saved state; a clean session reloads the file (in
+      case an agent changed it while the app was closed), a session with
+      unsaved changes keeps them and says if the file changed.
+- [x] **[bug] Open discards unsaved changes without asking** (Ctrl+O and
+      File → Open…). It now asks, like New and Recent projects.
+- [x] **[bug] Desktop export fails when the app is opened from Finder.** macOS
+      gives Finder-launched apps a PATH without Homebrew, so FFmpeg was not
+      found. The exporter now also looks in /opt/homebrew/bin, /usr/local/bin
+      and similar places.
+- [x] **[feature] Copy, cut and paste items** (Ctrl/Cmd+C, X, V), including
+      into another scene. Animation comes along; an item that starts after the
+      target scene ends is moved to start at the playhead.
 
 ## Needs a person at the desktop app
 

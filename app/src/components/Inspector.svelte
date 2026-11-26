@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { duplicateSelected } from "../lib/edit.svelte";
   import { app, currentScene, selectedPosed, selectedItem, posedItem, positionKeyFrames, setPositionKey, toast, editItem, keyFrames, setAutoKey, updateScene, endGesture, run, secs, frames, fmtTime } from "../lib/store.svelte";
-  import { EXPRESSIONS, PALETTE, SKIN_TONES, uid } from "../lib/defaults";
+  import { EXPRESSIONS, PALETTE, SKIN_TONES } from "../lib/defaults";
   import VoicePanel from "./VoicePanel.svelte";
   import PosePanel from "./PosePanel.svelte";
   import type { LipSync, MouthSet, Viseme } from "../lib/types";
@@ -32,14 +33,7 @@
   }
 
   function duplicate() {
-    if (!item || !scene) return;
-    const copy = snap(item);
-    copy.id = uid(item.kind.type);
-    copy.x += 40;
-    copy.y += 0;
-    if (copy.motion) copy.motion.x += 40;
-    const idx = scene.items.findIndex((i) => i.id === item.id);
-    if (run({ op: "addItem", scene: scene.id, item: copy, index: idx + 1 })) app.selected = copy.id;
+    duplicateSelected();
   }
   function remove() {
     if (item && scene) run({ op: "removeItem", scene: scene.id, id: item.id });
@@ -317,7 +311,7 @@
       <span class="badge {kind.type}">{kind.type}</span>
     </header>
     <div class="actions">
-      <button onclick={duplicate} title="Duplicate (Ctrl+D)">⧉ Duplicate</button>
+      <button onclick={duplicate} title="Duplicate (Ctrl+D). Copy and paste into another scene with Ctrl+C, Ctrl+V">⧉ Duplicate</button>
       <button onclick={() => order(1)} title="Bring forward">⬆</button>
       <button onclick={() => order(-1)} title="Send backward">⬇</button>
       <button onclick={() => edit((it) => (it.flip = !it.flip))} title="Flip horizontally" class:on={item.flip}>⇋</button>

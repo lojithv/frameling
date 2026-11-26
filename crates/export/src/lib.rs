@@ -45,7 +45,22 @@ pub fn find_ffmpeg() -> PathBuf {
             }
         }
     }
+    // An app started from Finder or the Dock gets a minimal PATH without
+    // Homebrew, so look in the usual install places before trusting PATH.
+    if !cfg!(windows) && !on_path(exe_name) {
+        for dir in ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/bin", "/snap/bin"] {
+            let candidate = Path::new(dir).join(exe_name);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
     PathBuf::from(exe_name)
+}
+
+/// Whether a program can be found on PATH.
+fn on_path(exe_name: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(exe_name).is_file()))
 }
 
 /// File extension for a media file handed to FFmpeg. The MIME type wins: a
