@@ -105,7 +105,13 @@ export async function boot() {
       /* ignore broken autosave */
     }
   }
-  if (!restored) engine.load_demo();
+  if (restored) {
+    // Pick up where the last session was: its file, and whether it was saved.
+    const meta = await loadAutosaveMeta();
+    app.filePath = meta?.path ?? null;
+    app.fileMtime = meta?.mtime ?? 0;
+    if (meta && !meta.dirty) engine.mark_saved();
+  } else engine.load_demo();
   app.catalog = JSON.parse(engine.catalog());
   refresh();
   app.ready = true;
@@ -297,12 +303,32 @@ async function kvGet(key: string): Promise<string | null> {
   });
 }
 
+/** What the autosave belongs to, so a restored session keeps its file. */
+interface AutosaveMeta {
+  path: string | null;
+  mtime: number;
+  dirty: boolean;
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-function scheduleAutosave() {
+/** Autosave shortly (call after saving or opening, too: the file it belongs to changed). */
+export function scheduleAutosave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    if (engine) kvSet("autosave", engine.project_json()).catch(() => {});
+    if (!engine) return;
+    const meta: AutosaveMeta = { path: app.filePath, mtime: app.fileMtime, dirty: engine.is_dirty() };
+    kvSet("autosave", engine.project_json())
+      .then(() => kvSet("autosave-meta", JSON.stringify(meta)))
+      .catch(() => {});
   }, 800);
+}
+async function loadAutosaveMeta(): Promise<AutosaveMeta | null> {
+  try {
+    const m = JSON.parse((await kvGet("autosave-meta")) ?? "null");
+    return m && typeof m === "object" ? { path: typeof m.path === "string" ? m.path : null, mtime: Number(m.mtime) || 0, dirty: m.dirty !== false } : null;
+  } catch {
+    return null;
+  }
 }
 async function loadAutosave() {
   try {

@@ -3,7 +3,7 @@
 // exporter; the web build uses downloads and the WebCodecs exporter.
 
 import { toImageData } from "./thumbs";
-import { app, eng, loadProject, toast, rememberRecent, forgetRecent } from "./store.svelte";
+import { app, eng, loadProject, toast, rememberRecent, forgetRecent, scheduleAutosave } from "./store.svelte";
 import { exportInBrowser, frameStep } from "./webexport";
 import { addPack, applyPacks, packJsons } from "./packs";
 
@@ -32,7 +32,13 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
+/** Ask before replacing a project with unsaved changes. */
+export function okToDiscard(): boolean {
+  return !app.dirty || confirm("Discard unsaved changes?");
+}
+
 export async function openProject() {
+  if (!okToDiscard()) return;
   if (isDesktop) {
     const { invoke, dialog } = await tauri();
     const path = await dialog.open({ filters: FILTER, multiple: false });
@@ -67,6 +73,7 @@ export async function openPath(path: string): Promise<boolean> {
   if (!loadProject(json, path)) return false;
   app.fileMtime = await invoke<number>("file_mtime", { path });
   rememberRecent(path, app.project?.name ?? "");
+  scheduleAutosave();
   toast("Project opened");
   return true;
 }
@@ -89,6 +96,7 @@ export async function saveProject(saveAs = false) {
   }
   eng().mark_saved();
   app.dirty = false;
+  scheduleAutosave();
   toast("Project saved");
 }
 
@@ -279,6 +287,45 @@ export function loadPackFile(): Promise<void> {
     };
     input.click();
   });
+}
+
+/**
+ * Desktop, after a restored session: reconnect it to its project file, so Save
+ * writes there again. A session with no unsaved changes reloads the file (it
+ * may have been edited, by an agent say, while the app was closed); one with
+ * unsaved changes keeps them, with a note if the file changed meanwhile.
+ */
+export async function resumeFile() {
+  const path = app.filePath;
+  if (!path) return;
+  if (!isDesktop) {
+    app.filePath = null;
+    return;
+  }
+  const { invoke } = await tauri();
+  let m: number;
+  try {
+    m = await invoke<number>("file_mtime", { path });
+  } catch {
+    // Moved or deleted: keep the work, Save will ask where.
+    app.filePath = null;
+    app.fileMtime = 0;
+    return;
+  }
+  if (!app.dirty) {
+    if (m !== app.fileMtime) {
+      try {
+        loadProject(await invoke<string>("read_text_file", { path }), path, true);
+      } catch {
+        /* keep the restored copy */
+      }
+    }
+    app.fileMtime = m;
+  } else if (m !== app.fileMtime) {
+    toast(`${path.split(/[\\/]/).pop()} was changed outside the app. Save to keep your version, or reopen it.`);
+    app.fileMtime = m;
+  }
+  scheduleAutosave();
 }
 
 // ---------------------------------------------------------------- live sync with agents
